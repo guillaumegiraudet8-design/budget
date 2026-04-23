@@ -165,7 +165,6 @@ select.form-input{cursor:pointer}
 <div class="scroll-area" id="scroll-area">
   <div id="offline-banner" class="offline-banner">Hors ligne — synchronisation dès le retour de la connexion.</div>
 
-  <!-- DASHBOARD -->
   <div class="tab active" id="tab-dashboard">
     <div class="month-nav">
       <button class="month-nav-btn" onclick="changeMonth(-1)">‹</button>
@@ -209,7 +208,6 @@ select.form-input{cursor:pointer}
     <div class="expense-list" id="recent-list"></div>
   </div>
 
-  <!-- ADD -->
   <div class="tab" id="tab-add">
     <div class="section-title" style="margin-top:4px">Nouvelle dépense</div>
     <div class="form-section">
@@ -243,7 +241,6 @@ select.form-input{cursor:pointer}
     <button class="btn-submit" onclick="addExpense()">Ajouter la dépense</button>
   </div>
 
-  <!-- HISTORY -->
   <div class="tab" id="tab-history">
     <div class="section-title" style="margin-top:4px">Par mois</div>
     <div id="history-months"></div>
@@ -251,7 +248,6 @@ select.form-input{cursor:pointer}
     <div id="history-years"></div>
   </div>
 
-  <!-- SETTINGS -->
   <div class="tab" id="tab-settings">
     <div class="settings-card">
       <div class="settings-card-title">Budget mensuel commun</div>
@@ -290,7 +286,6 @@ select.form-input{cursor:pointer}
   <div class="nav-item" onclick="switchTab('settings',this)" id="nav-settings"><div class="nav-icon">⊙</div><div>Réglages</div></div>
 </div>
 
-<!-- MODAL dépense fixe -->
 <div class="modal-overlay hidden" id="modal-fixed">
   <div class="modal">
     <button class="modal-close" onclick="closeModal('modal-fixed')">✕</button>
@@ -311,7 +306,6 @@ select.form-input{cursor:pointer}
   </div>
 </div>
 
-<!-- MODAL ajouter montant dépense fixe -->
 <div class="modal-overlay hidden" id="modal-fixed-add">
   <div class="modal">
     <button class="modal-close" onclick="closeModal('modal-fixed-add')">✕</button>
@@ -333,7 +327,6 @@ select.form-input{cursor:pointer}
   </div>
 </div>
 
-<!-- MODAL catégorie -->
 <div class="modal-overlay hidden" id="modal-cat">
   <div class="modal">
     <button class="modal-close" onclick="closeModal('modal-cat')">✕</button>
@@ -366,7 +359,7 @@ select.form-input{cursor:pointer}
 
 <script type="module">
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
-import { getFirestore, collection, doc, setDoc, deleteDoc, onSnapshot, enableIndexedDbPersistence } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
+import { getFirestore, collection, doc, setDoc, deleteDoc, updateDoc, onSnapshot, enableIndexedDbPersistence } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
 
 const firebaseConfig = {
   apiKey: "AIzaSyA6c_RcMS7bK_QL1r6pUi1ZZhMJhqC4j3M",
@@ -410,6 +403,7 @@ let fixedPayments = [];
 let currentMonth = new Date().toISOString().slice(0,7);
 let editingFixedId = null;
 let addingPaymentForId = null;
+let editingExpenseId = null;
 
 function fmt(n){return Math.round(n).toLocaleString('fr-FR')+' MAD'}
 function fmtS(n){return Math.round(n).toLocaleString('fr-FR')}
@@ -419,7 +413,37 @@ function getMonthLabel(ym){
 }
 function catById(id){return categories.find(c=>c.id===id)||{icon:'📦',name:id,color:'#94a3b8'}}
 
-window.switchTab = function(tab, el){
+function getMonthData(ym){
+  const expenses = allExpenses.filter(e=>e.month===ym);
+  const payments = fixedPayments.filter(p=>p.month===ym);
+
+  const expensesTotal = expenses.reduce((s,e)=>s+e.amount,0);
+  const fixedTotal = payments.reduce((s,p)=>s+p.amount,0);
+  const totalSpent = expensesTotal + fixedTotal;
+
+  const gExpenses = expenses.filter(e=>e.who==='Guillaume').reduce((s,e)=>s+e.amount,0);
+  const mExpenses = expenses.filter(e=>e.who==='Merryl').reduce((s,e)=>s+e.amount,0);
+  const communExpenses = expenses.filter(e=>e.who==='Commun').reduce((s,e)=>s+e.amount,0);
+
+  const gFixed = payments.filter(p=>p.who==='Guillaume').reduce((s,p)=>s+p.amount,0);
+  const mFixed = payments.filter(p=>p.who==='Merryl').reduce((s,p)=>s+p.amount,0);
+  const communFixed = payments.filter(p=>p.who==='Commun').reduce((s,p)=>s+p.amount,0);
+
+  return {
+    expenses,
+    payments,
+    expensesTotal,
+    fixedTotal,
+    totalSpent,
+    gSpent: gExpenses + gFixed,
+    mSpent: mExpenses + mFixed,
+    communSpent: communExpenses + communFixed,
+    expenseCount: expenses.length,
+    paymentCount: payments.length
+  };
+}
+
+window.switchTab = function(tab){
   document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
   document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
   document.getElementById('tab-'+tab).classList.add('active');
@@ -444,50 +468,67 @@ function drawRing(pct,color){
   ctx.beginPath();ctx.arc(cx,cy,r,0,Math.PI*2);
   ctx.strokeStyle='rgba(255,255,255,0.06)';ctx.lineWidth=lw;ctx.stroke();
   if(pct>0){
-    ctx.beginPath();ctx.arc(cx,cy,r,-Math.PI/2,-Math.PI/2+(Math.min(pct,100)/100)*Math.PI*2);
-    ctx.strokeStyle=color;ctx.lineWidth=lw;ctx.lineCap='round';ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(cx,cy,r,-Math.PI/2,-Math.PI/2+(Math.min(pct,100)/100)*Math.PI*2);
+    ctx.strokeStyle=color;
+    ctx.lineWidth=lw;
+    ctx.lineCap='round';
+    ctx.stroke();
   }
 }
 
 function renderDashboard(){
   document.getElementById('month-label').textContent=getMonthLabel(currentMonth);
-  const me=allExpenses.filter(e=>e.month===currentMonth);
-  const spent=me.reduce((s,e)=>s+e.amount,0);
-  const remain=settings.budget-spent;
-  const pct=settings.budget>0?Math.min(100,Math.round(spent/settings.budget*100)):0;
-  const gSpent=me.filter(e=>e.who==='Guillaume').reduce((s,e)=>s+e.amount,0);
-  const mSpent=me.filter(e=>e.who==='Merryl').reduce((s,e)=>s+e.amount,0);
-  const gRemain=settings.gContrib-gSpent;
-  const mRemain=settings.mContrib-mSpent;
-  const rc=pct>90?'#ef4444':pct>70?'#f59e0b':'#10b981';
+
+  const md = getMonthData(currentMonth);
+  const spent = md.totalSpent;
+  const remain = settings.budget - spent;
+  const pct = settings.budget>0 ? Math.min(100,Math.round(spent/settings.budget*100)) : 0;
+
+  const gSpent = md.gSpent;
+  const mSpent = md.mSpent;
+
+  const gRemain = settings.gContrib - gSpent;
+  const mRemain = settings.mContrib - mSpent;
+  const rc = pct>90 ? '#ef4444' : pct>70 ? '#f59e0b' : '#10b981';
 
   drawRing(pct,rc);
   const rp=document.getElementById('ring-pct');
-  rp.textContent=pct+'%';rp.style.color=rc;
+  rp.textContent=pct+'%';
+  rp.style.color=rc;
+
   document.getElementById('s-budget').textContent=fmtS(settings.budget);
   document.getElementById('s-spent').textContent=fmtS(spent);
+
   const sr=document.getElementById('s-remain');
   sr.textContent=fmtS(Math.abs(remain));
   sr.className='s-value '+(remain<0?'danger':remain<settings.budget*0.1?'warn':'ok');
-  document.getElementById('s-count').textContent=me.length;
-  document.getElementById('count-badge').textContent=me.length;
+
+  document.getElementById('s-count').textContent=md.expenseCount + md.paymentCount;
+  document.getElementById('count-badge').textContent=md.expenseCount;
+
   const gPct=settings.gContrib>0?Math.min(100,Math.round(gSpent/settings.gContrib*100)):0;
   const mPct=settings.mContrib>0?Math.min(100,Math.round(mSpent/settings.mContrib*100)):0;
+
   document.getElementById('g-badge').textContent=fmt(gSpent);
   document.getElementById('m-badge').textContent=fmt(mSpent);
   document.getElementById('g-bar').style.width=gPct+'%';
   document.getElementById('m-bar').style.width=mPct+'%';
+
   document.getElementById('g-target').textContent='Cible : '+fmt(settings.gContrib);
   document.getElementById('m-target').textContent='Cible : '+fmt(settings.mContrib);
+
   document.getElementById('g-remain').textContent=gRemain>=0?'Reste '+fmt(gRemain):'Dépassé +'+fmt(Math.abs(gRemain));
   document.getElementById('g-remain').style.color=gRemain>=0?'var(--green)':'var(--red)';
+
   document.getElementById('m-remain').textContent=mRemain>=0?'Reste '+fmt(mRemain):'Dépassé +'+fmt(Math.abs(mRemain));
   document.getElementById('m-remain').style.color=mRemain>=0?'var(--green)':'var(--red)';
 
   renderFixedList();
 
-  const sorted=me.slice().sort((a,b)=>(b.createdAt||0)-(a.createdAt||0));
+  const sorted=md.expenses.slice().sort((a,b)=>(b.createdAt||0)-(a.createdAt||0));
   const list=document.getElementById('recent-list');
+
   if(!sorted.length){
     list.innerHTML='<div class="empty-state"><div class="empty-icon">💸</div>Aucune dépense ce mois-ci</div>';
   } else {
@@ -501,10 +542,16 @@ function renderDashboard(){
         </div>
         <div class="exp-right">
           <div class="exp-amount">${fmt(e.amount)}</div>
-          <button class="del-btn" onclick="delExpense('${e.id}')">✕</button>
+          <button class="del-btn" onclick="editExpense('${e.id}')" title="Modifier">✏️</button>
+          <button class="del-btn" onclick="delExpense('${e.id}')" title="Supprimer">✕</button>
         </div>
       </div>`;
     }).join('');
+  }
+
+  const submitBtn = document.querySelector('#tab-add .btn-submit');
+  if(submitBtn){
+    submitBtn.textContent = editingExpenseId ? 'Enregistrer les modifications' : 'Ajouter la dépense';
   }
 }
 
@@ -512,12 +559,18 @@ function renderFixedList(){
   const monthPay=fixedPayments.filter(p=>p.month===currentMonth);
   document.getElementById('fixed-badge').textContent=fixedItems.length;
   const el=document.getElementById('fixed-list');
-  if(!fixedItems.length){el.innerHTML='<div class="empty-state" style="padding:20px 0"><div class="empty-icon">📋</div>Aucune dépense fixe configurée</div>';return;}
+
+  if(!fixedItems.length){
+    el.innerHTML='<div class="empty-state" style="padding:20px 0"><div class="empty-icon">📋</div>Aucune dépense fixe configurée</div>';
+    return;
+  }
+
   el.innerHTML=fixedItems.map(fi=>{
     const paid=monthPay.filter(p=>p.fixedId===fi.id).reduce((s,p)=>s+p.amount,0);
     const pct=fi.budget>0?Math.min(100,Math.round(paid/fi.budget*100)):0;
     const remain=fi.budget-paid;
     const barColor=pct>90?'#ef4444':pct>70?'#f59e0b':'#3b82f6';
+
     return `<div class="fixed-card" onclick="openAddPayment('${fi.id}')">
       <div class="fixed-header">
         <div class="fixed-icon">${fi.icon}</div>
@@ -537,30 +590,50 @@ function renderFixedList(){
 
 function renderHistory(){
   const byMonth={},byYear={};
+
   allExpenses.forEach(e=>{
     if(!byMonth[e.month]) byMonth[e.month]={total:0,g:0,m:0,commun:0,count:0};
-    byMonth[e.month].total+=e.amount;byMonth[e.month].count++;
+    byMonth[e.month].total+=e.amount;
+    byMonth[e.month].count++;
     if(e.who==='Guillaume') byMonth[e.month].g+=e.amount;
     else if(e.who==='Merryl') byMonth[e.month].m+=e.amount;
     else byMonth[e.month].commun+=e.amount;
+
     const yr=e.month.slice(0,4);
     if(!byYear[yr]) byYear[yr]={total:0,count:0};
-    byYear[yr].total+=e.amount;byYear[yr].count++;
+    byYear[yr].total+=e.amount;
+    byYear[yr].count++;
   });
+
+  fixedPayments.forEach(p=>{
+    if(!byMonth[p.month]) byMonth[p.month]={total:0,g:0,m:0,commun:0,count:0};
+    byMonth[p.month].total+=p.amount;
+    byMonth[p.month].count++;
+    if(p.who==='Guillaume') byMonth[p.month].g+=p.amount;
+    else if(p.who==='Merryl') byMonth[p.month].m+=p.amount;
+    else byMonth[p.month].commun+=p.amount;
+
+    const yr=p.month.slice(0,4);
+    if(!byYear[yr]) byYear[yr]={total:0,count:0};
+    byYear[yr].total+=p.amount;
+    byYear[yr].count++;
+  });
+
   const months=Object.keys(byMonth).sort().reverse();
-  document.getElementById('history-months').innerHTML=!months.length?
-    '<div class="empty-state"><div class="empty-icon">📅</div>Aucun historique</div>':
-    months.map(m=>`<div class="history-month">
+  document.getElementById('history-months').innerHTML=!months.length
+    ? '<div class="empty-state"><div class="empty-icon">📅</div>Aucun historique</div>'
+    : months.map(m=>`<div class="history-month">
       <div class="hm-header"><div class="hm-name">${getMonthLabel(m)}</div><div class="hm-total">${fmt(byMonth[m].total)}</div></div>
       <div class="hm-row"><span>Guillaume</span><span>${fmt(byMonth[m].g)}</span></div>
       <div class="hm-row"><span>Merryl</span><span>${fmt(byMonth[m].m)}</span></div>
       ${byMonth[m].commun>0?`<div class="hm-row"><span>Commun</span><span>${fmt(byMonth[m].commun)}</span></div>`:''}
-      <div class="hm-row" style="margin-top:6px;border-top:1px solid rgba(255,255,255,0.06);padding-top:6px"><span style="color:var(--hint)">${byMonth[m].count} dépenses</span></div>
+      <div class="hm-row" style="margin-top:6px;border-top:1px solid rgba(255,255,255,0.06);padding-top:6px"><span style="color:var(--hint)">${byMonth[m].count} mouvements</span></div>
     </div>`).join('');
+
   const years=Object.keys(byYear).sort().reverse();
-  document.getElementById('history-years').innerHTML=!years.length?'':
-    `<div class="year-card">${years.map(y=>`<div class="year-row">
-      <div><div class="year-label">${y}</div><div class="year-sub">${byYear[y].count} dépenses</div></div>
+  document.getElementById('history-years').innerHTML=!years.length?''
+    : `<div class="year-card">${years.map(y=>`<div class="year-row">
+      <div><div class="year-label">${y}</div><div class="year-sub">${byYear[y].count} mouvements</div></div>
       <div class="year-total">${fmt(byYear[y].total)}</div>
     </div>`).join('')}</div>`;
 }
@@ -610,7 +683,10 @@ function populateCatSelect(){
   sel.innerHTML=categories.map(c=>`<option value="${c.id}">${c.icon} ${c.name}</option>`).join('');
 }
 
-window.openAddCat=function(){document.getElementById('modal-cat').classList.remove('hidden');}
+window.openAddCat=function(){
+  document.getElementById('modal-cat').classList.remove('hidden');
+};
+
 window.saveCat=async function(){
   const icon=document.getElementById('mc-icon').value.trim()||'📦';
   const name=document.getElementById('mc-name').value.trim();
@@ -625,6 +701,7 @@ window.saveCat=async function(){
   document.getElementById('mc-icon').value='';
   document.getElementById('mc-name').value='';
 };
+
 window.deleteCat=async function(id,e){
   e.stopPropagation();
   if(!confirm('Supprimer cette catégorie ?')) return;
@@ -656,8 +733,10 @@ window.openAddFixed=function(){
   document.getElementById('mf-budget').value='';
   document.getElementById('modal-fixed').classList.remove('hidden');
 };
+
 window.editFixed=function(id){
-  const fi=fixedItems.find(f=>f.id===id);if(!fi)return;
+  const fi=fixedItems.find(f=>f.id===id);
+  if(!fi)return;
   editingFixedId=id;
   document.getElementById('modal-fixed-title').textContent='Modifier';
   document.getElementById('mf-icon').value=fi.icon;
@@ -665,36 +744,47 @@ window.editFixed=function(id){
   document.getElementById('mf-budget').value=fi.budget;
   document.getElementById('modal-fixed').classList.remove('hidden');
 };
+
 window.saveFixed=async function(){
   const icon=document.getElementById('mf-icon').value.trim()||'📦';
   const name=document.getElementById('mf-name').value.trim();
   const budget=parseFloat(document.getElementById('mf-budget').value);
   if(!name||isNaN(budget)){alert('Remplis tous les champs.');return;}
+
   if(editingFixedId){
     fixedItems=fixedItems.map(f=>f.id===editingFixedId?{...f,icon,name,budget}:f);
   } else {
     fixedItems.push({id:'fix_'+Date.now().toString(36),icon,name,budget});
   }
+
   await setDoc(doc(db,'config','fixedItems'),{list:fixedItems});
-  renderFixedEditList();renderDashboard();
+  renderFixedEditList();
+  renderDashboard();
   closeModal('modal-fixed');
 };
+
 window.deleteFixed=async function(id){
   if(!confirm('Supprimer cette dépense fixe ?')) return;
   fixedItems=fixedItems.filter(f=>f.id!==id);
   await setDoc(doc(db,'config','fixedItems'),{list:fixedItems});
-  renderFixedEditList();renderDashboard();
+  renderFixedEditList();
+  renderDashboard();
 };
 
 window.openAddPayment=function(fixedId){
-  const fi=fixedItems.find(f=>f.id===fixedId);if(!fi)return;
+  const fi=fixedItems.find(f=>f.id===fixedId);
+  if(!fi)return;
   addingPaymentForId=fixedId;
   document.getElementById('modal-fa-title').textContent=fi.icon+' '+fi.name;
-  const paid=fixedPayments.filter(p=>p.month===currentMonth&&p.fixedId===fixedId).reduce((s,p)=>s+p.amount,0);
+  const paid=fixedPayments
+    .filter(p=>p.month===currentMonth&&p.fixedId===fixedId)
+    .reduce((s,p)=>s+p.amount,0);
   document.getElementById('modal-fa-sub').textContent=`${fmt(paid)} payés sur ${fmt(fi.budget)} ce mois`;
   document.getElementById('mfa-amount').value='';
+  document.getElementById('mfa-who').value='Guillaume';
   document.getElementById('modal-fixed-add').classList.remove('hidden');
 };
+
 window.saveFixedPayment=async function(){
   const amount=parseFloat(document.getElementById('mfa-amount').value);
   const who=document.getElementById('mfa-who').value;
@@ -705,20 +795,61 @@ window.saveFixedPayment=async function(){
   closeModal('modal-fixed-add');
 };
 
+window.editExpense=function(id){
+  const exp = allExpenses.find(e=>e.id===id);
+  if(!exp) return;
+
+  editingExpenseId = id;
+  document.getElementById('f-label').value = exp.label || '';
+  document.getElementById('f-amount').value = exp.amount ?? '';
+  document.getElementById('f-who').value = exp.who || 'Guillaume';
+  document.getElementById('f-cat').value = exp.cat || 'autre';
+  document.getElementById('f-date').value = exp.date || new Date().toISOString().slice(0,10);
+
+  const submitBtn = document.querySelector('#tab-add .btn-submit');
+  if(submitBtn) submitBtn.textContent = 'Enregistrer les modifications';
+
+  switchTab('add');
+};
+
 window.addExpense=async function(){
   const label=document.getElementById('f-label').value.trim();
   const amount=parseFloat(document.getElementById('f-amount').value);
   const who=document.getElementById('f-who').value;
   const cat=document.getElementById('f-cat').value;
   const date=document.getElementById('f-date').value||new Date().toISOString().slice(0,10);
-  if(!label||isNaN(amount)||amount<=0){alert('Libellé et montant requis.');return;}
+
+  if(!label||isNaN(amount)||amount<=0){
+    alert('Libellé et montant requis.');
+    return;
+  }
+
   const month=date.slice(0,7);
-  const id=Date.now().toString(36)+Math.random().toString(36).slice(2,6);
-  await setDoc(doc(db,'expenses',id),{id,label,amount,who,cat,date,month,createdAt:Date.now()});
+
+  if(editingExpenseId){
+    await updateDoc(doc(db,'expenses',editingExpenseId),{
+      label,amount,who,cat,date,month
+    });
+  } else {
+    const id=Date.now().toString(36)+Math.random().toString(36).slice(2,6);
+    await setDoc(doc(db,'expenses',id),{
+      id,label,amount,who,cat,date,month,createdAt:Date.now()
+    });
+  }
+
+  editingExpenseId = null;
   document.getElementById('f-label').value='';
   document.getElementById('f-amount').value='';
+  document.getElementById('f-who').value='Guillaume';
+  document.getElementById('f-cat').selectedIndex=0;
+  document.getElementById('f-date').value=new Date().toISOString().slice(0,10);
+
   currentMonth=month;
-  switchTab('dashboard',document.getElementById('nav-dashboard'));
+
+  const submitBtn = document.querySelector('#tab-add .btn-submit');
+  if(submitBtn) submitBtn.textContent = 'Ajouter la dépense';
+
+  switchTab('dashboard');
 };
 
 window.delExpense=async function(id){
@@ -726,10 +857,14 @@ window.delExpense=async function(id){
   await deleteDoc(doc(db,'expenses',id));
 };
 
-window.closeModal=function(id){document.getElementById(id).classList.add('hidden');};
+window.closeModal=function(id){
+  document.getElementById(id).classList.add('hidden');
+};
 
 document.querySelectorAll('.modal-overlay').forEach(o=>{
-  o.addEventListener('click',e=>{if(e.target===o)o.classList.add('hidden');});
+  o.addEventListener('click',e=>{
+    if(e.target===o)o.classList.add('hidden');
+  });
 });
 
 function setSyncStatus(s){
@@ -740,6 +875,7 @@ function setSyncStatus(s){
   lbl.textContent=s==='online'?'Synchronisé':s==='offline'?'Hors ligne':'Sync...';
   banner.style.display=s==='offline'?'block':'none';
 }
+
 window.addEventListener('online',()=>setSyncStatus('online'));
 window.addEventListener('offline',()=>setSyncStatus('offline'));
 setSyncStatus(navigator.onLine?'online':'offline');
@@ -749,20 +885,32 @@ populateCatSelect();
 
 onSnapshot(collection(db,'expenses'),snap=>{
   allExpenses=snap.docs.map(d=>d.data());
-  setSyncStatus('online');renderDashboard();
+  setSyncStatus(navigator.onLine ? 'online' : 'offline');
+  renderDashboard();
 });
+
 onSnapshot(doc(db,'config','settings'),snap=>{
-  if(snap.exists()){settings=snap.data();renderDashboard();}
+  if(snap.exists()){
+    settings=snap.data();
+    renderDashboard();
+  }
 });
+
 onSnapshot(doc(db,'config','categories'),snap=>{
   if(snap.exists()&&snap.data().list){
     categories=[...DEFAULT_CATS,...snap.data().list.filter(c=>!DEFAULT_CATS.find(d=>d.id===c.id))];
     populateCatSelect();
+    renderDashboard();
   }
 });
+
 onSnapshot(doc(db,'config','fixedItems'),snap=>{
-  if(snap.exists()&&snap.data().list){fixedItems=snap.data().list;renderDashboard();}
+  if(snap.exists()&&snap.data().list){
+    fixedItems=snap.data().list;
+    renderDashboard();
+  }
 });
+
 onSnapshot(collection(db,'fixedPayments'),snap=>{
   fixedPayments=snap.docs.map(d=>d.data());
   renderDashboard();
