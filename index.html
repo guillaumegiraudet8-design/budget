@@ -77,6 +77,14 @@ body{display:flex;flex-direction:column}
 .fixed-pct{font-size:12px;font-family:'DM Mono',monospace;color:var(--muted)}
 .fixed-bar{height:4px;background:rgba(255,255,255,0.06);border-radius:99px;overflow:hidden}
 .fixed-fill{height:100%;border-radius:99px;transition:width .4s}
+.fixed-payments{margin-top:10px;display:flex;flex-direction:column;gap:6px}
+.fixed-payment-row{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 10px;border-radius:10px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.05)}
+.fixed-payment-left{display:flex;flex-direction:column;min-width:0}
+.fixed-payment-title{font-size:12px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.fixed-payment-meta{font-size:11px;color:var(--muted)}
+.fixed-payment-right{display:flex;align-items:center;gap:6px}
+.fixed-payment-amount{font-size:12px;font-family:'DM Mono',monospace;white-space:nowrap}
+.fixed-payment-empty{margin-top:10px;font-size:12px;color:var(--hint)}
 
 .expense-list{display:flex;flex-direction:column;gap:2px}
 .exp-row{display:flex;align-items:center;gap:12px;padding:10px 14px;background:var(--surface);border-radius:var(--radius-sm);border:1px solid var(--border);transition:background .15s}
@@ -280,10 +288,10 @@ select.form-input{cursor:pointer}
 </div>
 
 <div class="bottom-nav">
-  <div class="nav-item active" onclick="switchTab('dashboard',this)" id="nav-dashboard"><div class="nav-icon">◎</div><div>Tableau</div></div>
-  <div class="nav-item" onclick="switchTab('add',this)" id="nav-add"><div class="nav-icon">＋</div><div>Ajouter</div></div>
-  <div class="nav-item" onclick="switchTab('history',this)" id="nav-history"><div class="nav-icon">◷</div><div>Historique</div></div>
-  <div class="nav-item" onclick="switchTab('settings',this)" id="nav-settings"><div class="nav-icon">⊙</div><div>Réglages</div></div>
+  <div class="nav-item active" onclick="switchTab('dashboard')" id="nav-dashboard"><div class="nav-icon">◎</div><div>Tableau</div></div>
+  <div class="nav-item" onclick="switchTab('add')" id="nav-add"><div class="nav-icon">＋</div><div>Ajouter</div></div>
+  <div class="nav-item" onclick="switchTab('history')" id="nav-history"><div class="nav-icon">◷</div><div>Historique</div></div>
+  <div class="nav-item" onclick="switchTab('settings')" id="nav-settings"><div class="nav-icon">⊙</div><div>Réglages</div></div>
 </div>
 
 <div class="modal-overlay hidden" id="modal-fixed">
@@ -323,7 +331,7 @@ select.form-input{cursor:pointer}
         <option value="Commun">Les deux</option>
       </select>
     </div>
-    <button class="btn-submit" onclick="saveFixedPayment()">Ajouter</button>
+    <button class="btn-submit" id="fixed-payment-submit-btn" onclick="saveFixedPayment()">Ajouter</button>
   </div>
 </div>
 
@@ -404,6 +412,7 @@ let currentMonth = new Date().toISOString().slice(0,7);
 let editingFixedId = null;
 let addingPaymentForId = null;
 let editingExpenseId = null;
+let editingFixedPaymentId = null;
 
 function fmt(n){return Math.round(n).toLocaleString('fr-FR')+' MAD'}
 function fmtS(n){return Math.round(n).toLocaleString('fr-FR')}
@@ -441,6 +450,25 @@ function getMonthData(ym){
     expenseCount: expenses.length,
     paymentCount: payments.length
   };
+}
+
+function resetExpenseForm(){
+  editingExpenseId = null;
+  document.getElementById('f-label').value='';
+  document.getElementById('f-amount').value='';
+  document.getElementById('f-who').value='Guillaume';
+  document.getElementById('f-cat').selectedIndex=0;
+  document.getElementById('f-date').value=new Date().toISOString().slice(0,10);
+  const submitBtn = document.querySelector('#tab-add .btn-submit');
+  if(submitBtn) submitBtn.textContent = 'Ajouter la dépense';
+}
+
+function resetFixedPaymentForm(){
+  editingFixedPaymentId = null;
+  document.getElementById('mfa-amount').value='';
+  document.getElementById('mfa-who').value='Guillaume';
+  const submitBtn = document.getElementById('fixed-payment-submit-btn');
+  if(submitBtn) submitBtn.textContent = 'Ajouter';
 }
 
 window.switchTab = function(tab){
@@ -566,7 +594,11 @@ function renderFixedList(){
   }
 
   el.innerHTML=fixedItems.map(fi=>{
-    const paid=monthPay.filter(p=>p.fixedId===fi.id).reduce((s,p)=>s+p.amount,0);
+    const paymentsForItem = monthPay
+      .filter(p=>p.fixedId===fi.id)
+      .sort((a,b)=>(b.createdAt||0)-(a.createdAt||0));
+
+    const paid=paymentsForItem.reduce((s,p)=>s+p.amount,0);
     const pct=fi.budget>0?Math.min(100,Math.round(paid/fi.budget*100)):0;
     const remain=fi.budget-paid;
     const barColor=pct>90?'#ef4444':pct>70?'#f59e0b':'#3b82f6';
@@ -584,6 +616,22 @@ function renderFixedList(){
         <div class="fixed-pct" style="color:${barColor}">${pct}%</div>
       </div>
       <div class="fixed-bar"><div class="fixed-fill" style="width:${pct}%;background:${barColor}"></div></div>
+
+      <div class="fixed-payments" onclick="event.stopPropagation()">
+        ${paymentsForItem.length ? paymentsForItem.map(p=>`
+          <div class="fixed-payment-row">
+            <div class="fixed-payment-left">
+              <div class="fixed-payment-title">${p.who}</div>
+              <div class="fixed-payment-meta">${currentMonth}</div>
+            </div>
+            <div class="fixed-payment-right">
+              <div class="fixed-payment-amount">${fmt(p.amount)}</div>
+              <button class="del-btn" onclick="editFixedPayment('${p.id}')" title="Modifier">✏️</button>
+              <button class="del-btn" onclick="delFixedPayment('${p.id}')" title="Supprimer">✕</button>
+            </div>
+          </div>
+        `).join('') : `<div class="fixed-payment-empty">Aucun versement ce mois-ci</div>`}
+      </div>
     </div>`;
   }).join('');
 }
@@ -774,24 +822,58 @@ window.deleteFixed=async function(id){
 window.openAddPayment=function(fixedId){
   const fi=fixedItems.find(f=>f.id===fixedId);
   if(!fi)return;
+
   addingPaymentForId=fixedId;
+  editingFixedPaymentId=null;
+
   document.getElementById('modal-fa-title').textContent=fi.icon+' '+fi.name;
   const paid=fixedPayments
     .filter(p=>p.month===currentMonth&&p.fixedId===fixedId)
     .reduce((s,p)=>s+p.amount,0);
   document.getElementById('modal-fa-sub').textContent=`${fmt(paid)} payés sur ${fmt(fi.budget)} ce mois`;
-  document.getElementById('mfa-amount').value='';
-  document.getElementById('mfa-who').value='Guillaume';
+
+  resetFixedPaymentForm();
   document.getElementById('modal-fixed-add').classList.remove('hidden');
+};
+
+window.editFixedPayment=function(id){
+  const payment = fixedPayments.find(p=>p.id===id);
+  if(!payment) return;
+
+  const fi = fixedItems.find(f=>f.id===payment.fixedId);
+  addingPaymentForId = payment.fixedId;
+  editingFixedPaymentId = id;
+
+  document.getElementById('modal-fa-title').textContent=(fi ? fi.icon+' '+fi.name : 'Modifier le versement');
+  document.getElementById('modal-fa-sub').textContent=`Modification du versement du mois ${payment.month}`;
+  document.getElementById('mfa-amount').value = payment.amount ?? '';
+  document.getElementById('mfa-who').value = payment.who || 'Guillaume';
+  document.getElementById('fixed-payment-submit-btn').textContent = 'Enregistrer';
+
+  document.getElementById('modal-fixed-add').classList.remove('hidden');
+};
+
+window.delFixedPayment=async function(id){
+  if(!confirm('Supprimer ce versement ?')) return;
+  await deleteDoc(doc(db,'fixedPayments',id));
 };
 
 window.saveFixedPayment=async function(){
   const amount=parseFloat(document.getElementById('mfa-amount').value);
   const who=document.getElementById('mfa-who').value;
   if(isNaN(amount)||amount<=0){alert('Montant invalide.');return;}
-  const id='fp_'+Date.now().toString(36);
-  const payment={id,fixedId:addingPaymentForId,amount,who,month:currentMonth,createdAt:Date.now()};
-  await setDoc(doc(db,'fixedPayments',id),payment);
+
+  if(editingFixedPaymentId){
+    await updateDoc(doc(db,'fixedPayments',editingFixedPaymentId),{
+      amount, who
+    });
+  } else {
+    const id='fp_'+Date.now().toString(36);
+    const payment={id,fixedId:addingPaymentForId,amount,who,month:currentMonth,createdAt:Date.now()};
+    await setDoc(doc(db,'fixedPayments',id),payment);
+  }
+
+  resetFixedPaymentForm();
   closeModal('modal-fixed-add');
 };
 
@@ -837,18 +919,8 @@ window.addExpense=async function(){
     });
   }
 
-  editingExpenseId = null;
-  document.getElementById('f-label').value='';
-  document.getElementById('f-amount').value='';
-  document.getElementById('f-who').value='Guillaume';
-  document.getElementById('f-cat').selectedIndex=0;
-  document.getElementById('f-date').value=new Date().toISOString().slice(0,10);
-
+  resetExpenseForm();
   currentMonth=month;
-
-  const submitBtn = document.querySelector('#tab-add .btn-submit');
-  if(submitBtn) submitBtn.textContent = 'Ajouter la dépense';
-
   switchTab('dashboard');
 };
 
@@ -859,11 +931,15 @@ window.delExpense=async function(id){
 
 window.closeModal=function(id){
   document.getElementById(id).classList.add('hidden');
+  if(id==='modal-fixed-add') resetFixedPaymentForm();
 };
 
 document.querySelectorAll('.modal-overlay').forEach(o=>{
   o.addEventListener('click',e=>{
-    if(e.target===o)o.classList.add('hidden');
+    if(e.target===o){
+      o.classList.add('hidden');
+      if(o.id==='modal-fixed-add') resetFixedPaymentForm();
+    }
   });
 });
 
