@@ -85,6 +85,15 @@ body{display:flex;flex-direction:column}
 .fixed-payment-right{display:flex;align-items:center;gap:6px}
 .fixed-payment-amount{font-size:12px;font-family:'DM Mono',monospace;white-space:nowrap}
 .fixed-payment-empty{margin-top:10px;font-size:12px;color:var(--hint)}
+.toast{position:fixed;bottom:calc(92px + var(--safe-bottom));left:50%;transform:translateX(-50%) translateY(8px);background:var(--surface);border:1px solid var(--border);color:var(--text);padding:10px 16px;border-radius:999px;font-size:13px;opacity:0;pointer-events:none;transition:opacity .25s,transform .25s;z-index:999;box-shadow:0 10px 25px rgba(0,0,0,.25)}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+.cat-summary{display:flex;flex-direction:column;gap:6px;margin-bottom:8px}
+.cat-summary-row{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);padding:10px 12px}
+.cat-summary-top{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:7px}
+.cat-summary-name{font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cat-summary-amount{font-size:13px;font-family:'DM Mono',monospace;white-space:nowrap}
+.cat-summary-bar{height:4px;background:rgba(255,255,255,0.06);border-radius:99px;overflow:hidden}
+.cat-summary-fill{height:100%;border-radius:99px}
 
 .expense-list{display:flex;flex-direction:column;gap:2px}
 .exp-row{display:flex;align-items:center;gap:12px;padding:10px 14px;background:var(--surface);border-radius:var(--radius-sm);border:1px solid var(--border);transition:background .15s}
@@ -173,6 +182,7 @@ select.form-input{cursor:pointer}
 <div class="scroll-area" id="scroll-area">
   <div id="offline-banner" class="offline-banner">Hors ligne — synchronisation dès le retour de la connexion.</div>
 
+  <!-- DASHBOARD -->
   <div class="tab active" id="tab-dashboard">
     <div class="month-nav">
       <button class="month-nav-btn" onclick="changeMonth(-1)">‹</button>
@@ -211,11 +221,17 @@ select.form-input{cursor:pointer}
     <div id="fixed-list"></div>
 
     <div class="section-title">
+      <span>Répartition par catégorie</span>
+    </div>
+    <div class="cat-summary" id="cat-summary"></div>
+
+    <div class="section-title">
       <span>Dernières dépenses <span class="badge-count" id="count-badge">0</span></span>
     </div>
     <div class="expense-list" id="recent-list"></div>
   </div>
 
+  <!-- ADD -->
   <div class="tab" id="tab-add">
     <div class="section-title" style="margin-top:4px">Nouvelle dépense</div>
     <div class="form-section">
@@ -249,13 +265,16 @@ select.form-input{cursor:pointer}
     <button class="btn-submit" onclick="addExpense()">Ajouter la dépense</button>
   </div>
 
+  <!-- HISTORY -->
   <div class="tab" id="tab-history">
+    <button class="btn-secondary" onclick="exportCSV()" style="margin-bottom:12px">Exporter le mois en CSV</button>
     <div class="section-title" style="margin-top:4px">Par mois</div>
     <div id="history-months"></div>
     <div class="section-title">Par année</div>
     <div id="history-years"></div>
   </div>
 
+  <!-- SETTINGS -->
   <div class="tab" id="tab-settings">
     <div class="settings-card">
       <div class="settings-card-title">Budget mensuel commun</div>
@@ -288,12 +307,13 @@ select.form-input{cursor:pointer}
 </div>
 
 <div class="bottom-nav">
-  <div class="nav-item active" onclick="switchTab('dashboard')" id="nav-dashboard"><div class="nav-icon">◎</div><div>Tableau</div></div>
-  <div class="nav-item" onclick="switchTab('add')" id="nav-add"><div class="nav-icon">＋</div><div>Ajouter</div></div>
-  <div class="nav-item" onclick="switchTab('history')" id="nav-history"><div class="nav-icon">◷</div><div>Historique</div></div>
-  <div class="nav-item" onclick="switchTab('settings')" id="nav-settings"><div class="nav-icon">⊙</div><div>Réglages</div></div>
+  <div class="nav-item active" onclick="switchTab('dashboard',this)" id="nav-dashboard"><div class="nav-icon">◎</div><div>Tableau</div></div>
+  <div class="nav-item" onclick="switchTab('add',this)" id="nav-add"><div class="nav-icon">＋</div><div>Ajouter</div></div>
+  <div class="nav-item" onclick="switchTab('history',this)" id="nav-history"><div class="nav-icon">◷</div><div>Historique</div></div>
+  <div class="nav-item" onclick="switchTab('settings',this)" id="nav-settings"><div class="nav-icon">⊙</div><div>Réglages</div></div>
 </div>
 
+<!-- MODAL dépense fixe -->
 <div class="modal-overlay hidden" id="modal-fixed">
   <div class="modal">
     <button class="modal-close" onclick="closeModal('modal-fixed')">✕</button>
@@ -314,6 +334,7 @@ select.form-input{cursor:pointer}
   </div>
 </div>
 
+<!-- MODAL ajouter montant dépense fixe -->
 <div class="modal-overlay hidden" id="modal-fixed-add">
   <div class="modal">
     <button class="modal-close" onclick="closeModal('modal-fixed-add')">✕</button>
@@ -335,6 +356,7 @@ select.form-input{cursor:pointer}
   </div>
 </div>
 
+<!-- MODAL catégorie -->
 <div class="modal-overlay hidden" id="modal-cat">
   <div class="modal">
     <button class="modal-close" onclick="closeModal('modal-cat')">✕</button>
@@ -364,6 +386,8 @@ select.form-input{cursor:pointer}
     <button class="btn-submit" onclick="saveCat()">Ajouter</button>
   </div>
 </div>
+
+<div id="toast" class="toast"></div>
 
 <script type="module">
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
@@ -422,6 +446,15 @@ function getMonthLabel(ym){
 }
 function catById(id){return categories.find(c=>c.id===id)||{icon:'📦',name:id,color:'#94a3b8'}}
 
+function showToast(msg){
+  const t=document.getElementById('toast');
+  if(!t) return;
+  t.textContent=msg;
+  t.classList.add('show');
+  clearTimeout(window.__toastTimer);
+  window.__toastTimer=setTimeout(()=>t.classList.remove('show'),2200);
+}
+
 function getMonthData(ym){
   const expenses = allExpenses.filter(e=>e.month===ym);
   const payments = fixedPayments.filter(p=>p.month===ym);
@@ -430,23 +463,25 @@ function getMonthData(ym){
   const fixedTotal = payments.reduce((s,p)=>s+p.amount,0);
   const totalSpent = expensesTotal + fixedTotal;
 
-  const gExpenses = expenses.filter(e=>e.who==='Guillaume').reduce((s,e)=>s+e.amount,0);
-  const mExpenses = expenses.filter(e=>e.who==='Merryl').reduce((s,e)=>s+e.amount,0);
-  const communExpenses = expenses.filter(e=>e.who==='Commun').reduce((s,e)=>s+e.amount,0);
+  let gSpent = 0;
+  let mSpent = 0;
+  let communSpent = 0;
 
-  const gFixed = payments.filter(p=>p.who==='Guillaume').reduce((s,p)=>s+p.amount,0);
-  const mFixed = payments.filter(p=>p.who==='Merryl').reduce((s,p)=>s+p.amount,0);
-  const communFixed = payments.filter(p=>p.who==='Commun').reduce((s,p)=>s+p.amount,0);
+  expenses.forEach(e=>{
+    if(e.who==='Guillaume') gSpent += e.amount;
+    else if(e.who==='Merryl') mSpent += e.amount;
+    else { communSpent += e.amount; gSpent += e.amount/2; mSpent += e.amount/2; }
+  });
+
+  payments.forEach(p=>{
+    if(p.who==='Guillaume') gSpent += p.amount;
+    else if(p.who==='Merryl') mSpent += p.amount;
+    else { communSpent += p.amount; gSpent += p.amount/2; mSpent += p.amount/2; }
+  });
 
   return {
-    expenses,
-    payments,
-    expensesTotal,
-    fixedTotal,
-    totalSpent,
-    gSpent: gExpenses + gFixed,
-    mSpent: mExpenses + mFixed,
-    communSpent: communExpenses + communFixed,
+    expenses, payments, expensesTotal, fixedTotal, totalSpent,
+    gSpent, mSpent, communSpent,
     expenseCount: expenses.length,
     paymentCount: payments.length
   };
@@ -459,19 +494,20 @@ function resetExpenseForm(){
   document.getElementById('f-who').value='Guillaume';
   document.getElementById('f-cat').selectedIndex=0;
   document.getElementById('f-date').value=new Date().toISOString().slice(0,10);
-  const submitBtn = document.querySelector('#tab-add .btn-submit');
-  if(submitBtn) submitBtn.textContent = 'Ajouter la dépense';
+  const submitBtn=document.querySelector('#tab-add .btn-submit');
+  if(submitBtn) submitBtn.textContent='Ajouter la dépense';
 }
 
 function resetFixedPaymentForm(){
   editingFixedPaymentId = null;
   document.getElementById('mfa-amount').value='';
   document.getElementById('mfa-who').value='Guillaume';
-  const submitBtn = document.getElementById('fixed-payment-submit-btn');
-  if(submitBtn) submitBtn.textContent = 'Ajouter';
+  const submitBtn=document.getElementById('fixed-payment-submit-btn');
+  if(submitBtn) submitBtn.textContent='Ajouter';
 }
 
-window.switchTab = function(tab){
+
+window.switchTab = function(tab, el){
   document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
   document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
   document.getElementById('tab-'+tab).classList.add('active');
@@ -496,12 +532,8 @@ function drawRing(pct,color){
   ctx.beginPath();ctx.arc(cx,cy,r,0,Math.PI*2);
   ctx.strokeStyle='rgba(255,255,255,0.06)';ctx.lineWidth=lw;ctx.stroke();
   if(pct>0){
-    ctx.beginPath();
-    ctx.arc(cx,cy,r,-Math.PI/2,-Math.PI/2+(Math.min(pct,100)/100)*Math.PI*2);
-    ctx.strokeStyle=color;
-    ctx.lineWidth=lw;
-    ctx.lineCap='round';
-    ctx.stroke();
+    ctx.beginPath();ctx.arc(cx,cy,r,-Math.PI/2,-Math.PI/2+(Math.min(pct,100)/100)*Math.PI*2);
+    ctx.strokeStyle=color;ctx.lineWidth=lw;ctx.lineCap='round';ctx.stroke();
   }
 }
 
@@ -512,10 +544,8 @@ function renderDashboard(){
   const spent = md.totalSpent;
   const remain = settings.budget - spent;
   const pct = settings.budget>0 ? Math.min(100,Math.round(spent/settings.budget*100)) : 0;
-
   const gSpent = md.gSpent;
   const mSpent = md.mSpent;
-
   const gRemain = settings.gContrib - gSpent;
   const mRemain = settings.mContrib - mSpent;
   const rc = pct>90 ? '#ef4444' : pct>70 ? '#f59e0b' : '#10b981';
@@ -548,11 +578,11 @@ function renderDashboard(){
 
   document.getElementById('g-remain').textContent=gRemain>=0?'Reste '+fmt(gRemain):'Dépassé +'+fmt(Math.abs(gRemain));
   document.getElementById('g-remain').style.color=gRemain>=0?'var(--green)':'var(--red)';
-
   document.getElementById('m-remain').textContent=mRemain>=0?'Reste '+fmt(mRemain):'Dépassé +'+fmt(Math.abs(mRemain));
   document.getElementById('m-remain').style.color=mRemain>=0?'var(--green)':'var(--red)';
 
   renderFixedList();
+  renderCategorySummary(md);
 
   const sorted=md.expenses.slice().sort((a,b)=>(b.createdAt||0)-(a.createdAt||0));
   const list=document.getElementById('recent-list');
@@ -582,6 +612,40 @@ function renderDashboard(){
     submitBtn.textContent = editingExpenseId ? 'Enregistrer les modifications' : 'Ajouter la dépense';
   }
 }
+
+function renderCategorySummary(md){
+  const el=document.getElementById('cat-summary');
+  if(!el) return;
+
+  const totals={};
+  md.expenses.forEach(e=>{
+    const key=e.cat||'autre';
+    totals[key]=(totals[key]||0)+e.amount;
+  });
+
+  const rows=Object.entries(totals)
+    .map(([cat,total])=>({cat,total,info:catById(cat)}))
+    .sort((a,b)=>b.total-a.total)
+    .slice(0,5);
+
+  if(!rows.length){
+    el.innerHTML='<div class="empty-state" style="padding:18px 0"><div class="empty-icon">📊</div>Aucune donnée par catégorie</div>';
+    return;
+  }
+
+  const max=Math.max(...rows.map(r=>r.total),1);
+  el.innerHTML=rows.map(r=>{
+    const pct=Math.round((r.total/max)*100);
+    return `<div class="cat-summary-row">
+      <div class="cat-summary-top">
+        <div class="cat-summary-name">${r.info.icon} ${r.info.name}</div>
+        <div class="cat-summary-amount">${fmt(r.total)}</div>
+      </div>
+      <div class="cat-summary-bar"><div class="cat-summary-fill" style="width:${pct}%;background:${r.info.color}"></div></div>
+    </div>`;
+  }).join('');
+}
+
 
 function renderFixedList(){
   const monthPay=fixedPayments.filter(p=>p.month===currentMonth);
@@ -616,7 +680,6 @@ function renderFixedList(){
         <div class="fixed-pct" style="color:${barColor}">${pct}%</div>
       </div>
       <div class="fixed-bar"><div class="fixed-fill" style="width:${pct}%;background:${barColor}"></div></div>
-
       <div class="fixed-payments" onclick="event.stopPropagation()">
         ${paymentsForItem.length ? paymentsForItem.map(p=>`
           <div class="fixed-payment-row">
@@ -636,36 +699,31 @@ function renderFixedList(){
   }).join('');
 }
 
+
 function renderHistory(){
   const byMonth={},byYear={};
 
-  allExpenses.forEach(e=>{
-    if(!byMonth[e.month]) byMonth[e.month]={total:0,g:0,m:0,commun:0,count:0};
-    byMonth[e.month].total+=e.amount;
-    byMonth[e.month].count++;
-    if(e.who==='Guillaume') byMonth[e.month].g+=e.amount;
-    else if(e.who==='Merryl') byMonth[e.month].m+=e.amount;
-    else byMonth[e.month].commun+=e.amount;
+  function ensureMonth(m){
+    if(!byMonth[m]) byMonth[m]={total:0,g:0,m:0,commun:0,count:0};
+    return byMonth[m];
+  }
 
-    const yr=e.month.slice(0,4);
+  function addLine(month, amount, who){
+    const bm=ensureMonth(month);
+    bm.total+=amount;
+    bm.count++;
+    if(who==='Guillaume') bm.g+=amount;
+    else if(who==='Merryl') bm.m+=amount;
+    else { bm.commun+=amount; bm.g+=amount/2; bm.m+=amount/2; }
+
+    const yr=month.slice(0,4);
     if(!byYear[yr]) byYear[yr]={total:0,count:0};
-    byYear[yr].total+=e.amount;
+    byYear[yr].total+=amount;
     byYear[yr].count++;
-  });
+  }
 
-  fixedPayments.forEach(p=>{
-    if(!byMonth[p.month]) byMonth[p.month]={total:0,g:0,m:0,commun:0,count:0};
-    byMonth[p.month].total+=p.amount;
-    byMonth[p.month].count++;
-    if(p.who==='Guillaume') byMonth[p.month].g+=p.amount;
-    else if(p.who==='Merryl') byMonth[p.month].m+=p.amount;
-    else byMonth[p.month].commun+=p.amount;
-
-    const yr=p.month.slice(0,4);
-    if(!byYear[yr]) byYear[yr]={total:0,count:0};
-    byYear[yr].total+=p.amount;
-    byYear[yr].count++;
-  });
+  allExpenses.forEach(e=>addLine(e.month,e.amount,e.who));
+  fixedPayments.forEach(p=>addLine(p.month,p.amount,p.who));
 
   const months=Object.keys(byMonth).sort().reverse();
   document.getElementById('history-months').innerHTML=!months.length
@@ -674,7 +732,7 @@ function renderHistory(){
       <div class="hm-header"><div class="hm-name">${getMonthLabel(m)}</div><div class="hm-total">${fmt(byMonth[m].total)}</div></div>
       <div class="hm-row"><span>Guillaume</span><span>${fmt(byMonth[m].g)}</span></div>
       <div class="hm-row"><span>Merryl</span><span>${fmt(byMonth[m].m)}</span></div>
-      ${byMonth[m].commun>0?`<div class="hm-row"><span>Commun</span><span>${fmt(byMonth[m].commun)}</span></div>`:''}
+      ${byMonth[m].commun>0?`<div class="hm-row"><span>Dont "Les deux"</span><span>${fmt(byMonth[m].commun)}</span></div>`:''}
       <div class="hm-row" style="margin-top:6px;border-top:1px solid rgba(255,255,255,0.06);padding-top:6px"><span style="color:var(--hint)">${byMonth[m].count} mouvements</span></div>
     </div>`).join('');
 
@@ -685,6 +743,7 @@ function renderHistory(){
       <div class="year-total">${fmt(byYear[y].total)}</div>
     </div>`).join('')}</div>`;
 }
+
 
 function loadSettings(){
   document.getElementById('set-budget').value=settings.budget||'';
@@ -711,9 +770,10 @@ window.saveSettings=async function(){
   const m=parseFloat(document.getElementById('set-m').value);
   if(!b||!g||!m){alert('Remplis tous les champs.');return;}
   settings={budget:b,gContrib:g,mContrib:m};
+  setSyncStatus('syncing');
   await setDoc(doc(db,'config','settings'),settings);
   renderDashboard();
-  alert('Réglages enregistrés !');
+  showToast('Réglages enregistrés');
 };
 
 function renderCatGrid(){
@@ -731,10 +791,7 @@ function populateCatSelect(){
   sel.innerHTML=categories.map(c=>`<option value="${c.id}">${c.icon} ${c.name}</option>`).join('');
 }
 
-window.openAddCat=function(){
-  document.getElementById('modal-cat').classList.remove('hidden');
-};
-
+window.openAddCat=function(){document.getElementById('modal-cat').classList.remove('hidden');}
 window.saveCat=async function(){
   const icon=document.getElementById('mc-icon').value.trim()||'📦';
   const name=document.getElementById('mc-name').value.trim();
@@ -743,19 +800,22 @@ window.saveCat=async function(){
   const id='cat_'+Date.now().toString(36);
   const newCat={id,icon,name,color};
   categories.push(newCat);
+  setSyncStatus('syncing');
   await setDoc(doc(db,'config','categories'),{list:categories});
   renderCatGrid();
+  showToast('Catégorie ajoutée');
   closeModal('modal-cat');
   document.getElementById('mc-icon').value='';
   document.getElementById('mc-name').value='';
 };
-
 window.deleteCat=async function(id,e){
   e.stopPropagation();
   if(!confirm('Supprimer cette catégorie ?')) return;
   categories=categories.filter(c=>c.id!==id);
+  setSyncStatus('syncing');
   await setDoc(doc(db,'config','categories'),{list:categories});
   renderCatGrid();
+  showToast('Catégorie supprimée');
 };
 
 function renderFixedEditList(){
@@ -781,10 +841,8 @@ window.openAddFixed=function(){
   document.getElementById('mf-budget').value='';
   document.getElementById('modal-fixed').classList.remove('hidden');
 };
-
 window.editFixed=function(id){
-  const fi=fixedItems.find(f=>f.id===id);
-  if(!fi)return;
+  const fi=fixedItems.find(f=>f.id===id);if(!fi)return;
   editingFixedId=id;
   document.getElementById('modal-fixed-title').textContent='Modifier';
   document.getElementById('mf-icon').value=fi.icon;
@@ -792,31 +850,29 @@ window.editFixed=function(id){
   document.getElementById('mf-budget').value=fi.budget;
   document.getElementById('modal-fixed').classList.remove('hidden');
 };
-
 window.saveFixed=async function(){
   const icon=document.getElementById('mf-icon').value.trim()||'📦';
   const name=document.getElementById('mf-name').value.trim();
   const budget=parseFloat(document.getElementById('mf-budget').value);
   if(!name||isNaN(budget)){alert('Remplis tous les champs.');return;}
-
   if(editingFixedId){
     fixedItems=fixedItems.map(f=>f.id===editingFixedId?{...f,icon,name,budget}:f);
   } else {
     fixedItems.push({id:'fix_'+Date.now().toString(36),icon,name,budget});
   }
-
+  setSyncStatus('syncing');
   await setDoc(doc(db,'config','fixedItems'),{list:fixedItems});
-  renderFixedEditList();
-  renderDashboard();
+  renderFixedEditList();renderDashboard();
+  showToast(editingFixedId ? 'Dépense fixe modifiée' : 'Dépense fixe ajoutée');
   closeModal('modal-fixed');
 };
-
 window.deleteFixed=async function(id){
   if(!confirm('Supprimer cette dépense fixe ?')) return;
   fixedItems=fixedItems.filter(f=>f.id!==id);
+  setSyncStatus('syncing');
   await setDoc(doc(db,'config','fixedItems'),{list:fixedItems});
-  renderFixedEditList();
-  renderDashboard();
+  renderFixedEditList();renderDashboard();
+  showToast('Dépense fixe supprimée');
 };
 
 window.openAddPayment=function(fixedId){
@@ -855,7 +911,9 @@ window.editFixedPayment=function(id){
 
 window.delFixedPayment=async function(id){
   if(!confirm('Supprimer ce versement ?')) return;
+  setSyncStatus('syncing');
   await deleteDoc(doc(db,'fixedPayments',id));
+  showToast('Versement supprimé');
 };
 
 window.saveFixedPayment=async function(){
@@ -863,19 +921,24 @@ window.saveFixedPayment=async function(){
   const who=document.getElementById('mfa-who').value;
   if(isNaN(amount)||amount<=0){alert('Montant invalide.');return;}
 
+  setSyncStatus('syncing');
+
   if(editingFixedPaymentId){
     await updateDoc(doc(db,'fixedPayments',editingFixedPaymentId),{
       amount, who
     });
+    showToast('Versement modifié');
   } else {
     const id='fp_'+Date.now().toString(36);
     const payment={id,fixedId:addingPaymentForId,amount,who,month:currentMonth,createdAt:Date.now()};
     await setDoc(doc(db,'fixedPayments',id),payment);
+    showToast('Versement ajouté');
   }
 
   resetFixedPaymentForm();
   closeModal('modal-fixed-add');
 };
+
 
 window.editExpense=function(id){
   const exp = allExpenses.find(e=>e.id===id);
@@ -907,16 +970,19 @@ window.addExpense=async function(){
   }
 
   const month=date.slice(0,7);
+  setSyncStatus('syncing');
 
   if(editingExpenseId){
     await updateDoc(doc(db,'expenses',editingExpenseId),{
       label,amount,who,cat,date,month
     });
+    showToast('Dépense modifiée');
   } else {
     const id=Date.now().toString(36)+Math.random().toString(36).slice(2,6);
     await setDoc(doc(db,'expenses',id),{
       id,label,amount,who,cat,date,month,createdAt:Date.now()
     });
+    showToast('Dépense ajoutée');
   }
 
   resetExpenseForm();
@@ -924,9 +990,12 @@ window.addExpense=async function(){
   switchTab('dashboard');
 };
 
+
 window.delExpense=async function(id){
   if(!confirm('Supprimer cette dépense ?')) return;
+  setSyncStatus('syncing');
   await deleteDoc(doc(db,'expenses',id));
+  showToast('Dépense supprimée');
 };
 
 window.closeModal=function(id){
@@ -935,13 +1004,36 @@ window.closeModal=function(id){
 };
 
 document.querySelectorAll('.modal-overlay').forEach(o=>{
-  o.addEventListener('click',e=>{
-    if(e.target===o){
-      o.classList.add('hidden');
-      if(o.id==='modal-fixed-add') resetFixedPaymentForm();
-    }
-  });
+  o.addEventListener('click',e=>{if(e.target===o){o.classList.add('hidden'); if(o.id==='modal-fixed-add') resetFixedPaymentForm();}});
 });
+
+
+window.exportCSV=function(){
+  const md=getMonthData(currentMonth);
+  const rows=[['Type','Date/Mois','Libelle','Categorie/Fixe','Paye par','Montant MAD']];
+
+  md.expenses.forEach(e=>{
+    const cat=catById(e.cat);
+    rows.push(['Dépense',e.date||'',e.label||'',cat.name,e.who||'',e.amount||0]);
+  });
+
+  md.payments.forEach(p=>{
+    const fi=fixedItems.find(f=>f.id===p.fixedId);
+    rows.push(['Dépense fixe',p.month||'',fi?fi.name:p.fixedId,'Fixe',p.who||'',p.amount||0]);
+  });
+
+  const csv=rows.map(r=>r.map(v=>`"${String(v).replaceAll('"','""')}"`).join(';')).join('\n');
+  const blob=new Blob([csv],{type:'text/csv;charset=utf-8;'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');
+  a.href=url;
+  a.download=`budget-${currentMonth}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+  showToast('Export CSV généré');
+};
 
 function setSyncStatus(s){
   const dot=document.getElementById('sync-dot');
@@ -951,7 +1043,6 @@ function setSyncStatus(s){
   lbl.textContent=s==='online'?'Synchronisé':s==='offline'?'Hors ligne':'Sync...';
   banner.style.display=s==='offline'?'block':'none';
 }
-
 window.addEventListener('online',()=>setSyncStatus('online'));
 window.addEventListener('offline',()=>setSyncStatus('offline'));
 setSyncStatus(navigator.onLine?'online':'offline');
@@ -961,34 +1052,23 @@ populateCatSelect();
 
 onSnapshot(collection(db,'expenses'),snap=>{
   allExpenses=snap.docs.map(d=>d.data());
-  setSyncStatus(navigator.onLine ? 'online' : 'offline');
-  renderDashboard();
+  setSyncStatus(navigator.onLine ? 'online' : 'offline');renderDashboard();
 });
-
 onSnapshot(doc(db,'config','settings'),snap=>{
-  if(snap.exists()){
-    settings=snap.data();
-    renderDashboard();
-  }
+  if(snap.exists()){settings=snap.data();renderDashboard();}
 });
-
 onSnapshot(doc(db,'config','categories'),snap=>{
   if(snap.exists()&&snap.data().list){
     categories=[...DEFAULT_CATS,...snap.data().list.filter(c=>!DEFAULT_CATS.find(d=>d.id===c.id))];
     populateCatSelect();
-    renderDashboard();
   }
 });
-
 onSnapshot(doc(db,'config','fixedItems'),snap=>{
-  if(snap.exists()&&snap.data().list){
-    fixedItems=snap.data().list;
-    renderDashboard();
-  }
+  if(snap.exists()&&snap.data().list){fixedItems=snap.data().list;renderDashboard();}
 });
-
 onSnapshot(collection(db,'fixedPayments'),snap=>{
   fixedPayments=snap.docs.map(d=>d.data());
+  setSyncStatus(navigator.onLine ? 'online' : 'offline');
   renderDashboard();
 });
 
