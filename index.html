@@ -393,6 +393,12 @@ select.form-input{cursor:pointer}
     <div id="cal-section" style="display:none">
       <div class="cal-wrap">
         <div class="cal-label" id="cal-month-label">Passages du mois</div>
+        <div class="form-section" style="margin-bottom:10px">
+          <label class="form-label">Personne(s) à ajouter quand tu touches un jour</label>
+          <select class="form-input" id="cal-worker-scope" onchange="renderCalendar(addingPaymentForId,true)">
+            <option value="all">Naima + Yollande</option>
+          </select>
+        </div>
         <div class="cal-grid" id="cal-grid"></div>
         <div class="passages-list" id="passages-list"></div>
         <div class="cal-total" id="cal-total"></div>
@@ -551,7 +557,21 @@ function getMonthLabel(ym){
   const [y,m]=ym.split('-');
   return new Date(+y,+m-1,1).toLocaleDateString('fr-FR',{month:'long',year:'numeric'});
 }
-function catById(id){return categories.find(c=>c.id===id)||{icon:'📦',name:id,color:'#94a3b8'}}
+function fixedCatById(id){
+  const fixedId = String(id || '').replace(/^fixed_/, '');
+  const fi = fixedItems.find(f=>f.id===fixedId);
+  return fi ? {id:'fixed_'+fi.id, icon:fi.icon||'📌', name:fi.name||'Dépense fixe', color:'#64748b', fixedId:fi.id} : null;
+}
+function allCategoryOptions(){
+  const fixedCats = fixedItems.map(f=>({id:'fixed_'+f.id, icon:f.icon||'📌', name:f.name||'Dépense fixe', color:'#64748b', fixedId:f.id, isFixed:true}));
+  const seen = new Set();
+  return [...categories, ...fixedCats].filter(c=>{
+    if(seen.has(c.id)) return false;
+    seen.add(c.id);
+    return true;
+  });
+}
+function catById(id){return categories.find(c=>c.id===id)||fixedCatById(id)||{icon:'📦',name:id,color:'#94a3b8'}}
 
 function showToast(msg){
   const t=document.getElementById('toast');
@@ -896,7 +916,12 @@ function renderCatGrid(){
 
 function populateCatSelect(){
   const sel=document.getElementById('f-cat');
-  sel.innerHTML=categories.map(c=>`<option value="${c.id}">${c.icon} ${c.name}</option>`).join('');
+  if(!sel) return;
+  const baseOptions = categories.map(c=>`<option value="${c.id}">${c.icon} ${c.name}</option>`).join('');
+  const fixedOptions = fixedItems.length
+    ? `<option disabled>──────── Dépenses fixes ────────</option>` + fixedItems.map(f=>`<option value="fixed_${f.id}">${f.icon||'📌'} ${f.name}</option>`).join('')
+    : '';
+  sel.innerHTML=baseOptions+fixedOptions;
 }
 
 window.openAddCat=function(){document.getElementById('modal-cat').classList.remove('hidden');}
@@ -1004,7 +1029,7 @@ window.openAddPayment=function(fixedId){
   document.getElementById('cal-section').style.display = useCalendar ? 'block' : 'none';
   document.getElementById('classic-section').style.display = useCalendar ? 'none' : 'block';
 
-  if(useCalendar) renderCalendar(fixedId);
+  if(useCalendar) renderCalendar(fixedId,false);
 
   document.getElementById('modal-fixed-add').classList.remove('hidden');
 };
@@ -1024,7 +1049,7 @@ window.editFixedPayment=function(id){
     document.getElementById('cal-section').style.display='block';
     document.getElementById('classic-section').style.display='none';
     document.getElementById('mfa-who-cal').value = payment.who || 'Commun';
-    renderCalendar(payment.fixedId);
+    renderCalendar(payment.fixedId,false);
     document.getElementById('modal-fixed-add').classList.remove('hidden');
     return;
   }
@@ -1200,16 +1225,36 @@ window.deleteWorker = async function(id){
 // calPassages = { 'YYYY-MM-DD': { workerId: amount, ... }, ... }
 let calPassages = {};
 
-function renderCalendar(fixedId){
-  const [y,m] = currentMonth.split('-').map(Number);
-  const daysInMonth = new Date(y, m, 0).getDate();
-  const offset = (new Date(y, m-1, 1).getDay()+6)%7;
+function selectedCalendarWorkers(){
+  const sel = document.getElementById('cal-worker-scope');
+  const val = sel ? sel.value : 'all';
+  if(val && val !== 'all') return workers.filter(w=>w.id===val);
+  return workers.slice();
+}
 
-  // Charge les passages existants
+function populateCalendarWorkerSelect(){
+  const sel = document.getElementById('cal-worker-scope');
+  if(!sel) return;
+  const previous = sel.value || 'all';
+  sel.innerHTML = `<option value="all">Toutes les personnes</option>` + workers.map(w=>`<option value="${w.id}">${w.name}</option>`).join('');
+  sel.value = workers.find(w=>w.id===previous) ? previous : 'all';
+}
+
+function loadCalendarPassages(fixedId){
   calPassages = {};
   fixedPayments
     .filter(p=>p.month===currentMonth && p.fixedId===fixedId && p.passages)
     .forEach(p=>{ Object.assign(calPassages, p.passages); });
+}
+
+function renderCalendar(fixedId, preserveState=false){
+  if(!fixedId) return;
+  const [y,m] = currentMonth.split('-').map(Number);
+  const daysInMonth = new Date(y, m, 0).getDate();
+  const offset = (new Date(y, m-1, 1).getDay()+6)%7;
+
+  if(!preserveState) loadCalendarPassages(fixedId);
+  populateCalendarWorkerSelect();
 
   const monthLbl = new Date(y,m-1,1).toLocaleDateString('fr-FR',{month:'long',year:'numeric'});
   document.getElementById('cal-month-label').textContent = 'Passages — '+monthLbl;
@@ -1237,15 +1282,23 @@ function renderCalendar(fixedId){
 }
 
 window.toggleCalDay = function(dateStr, fixedId){
-  if(calPassages[dateStr] && Object.keys(calPassages[dateStr]).length > 0){
-    // Déjà des entrées → on efface
-    delete calPassages[dateStr];
+  const selected = selectedCalendarWorkers();
+  if(!selected.length){alert('Ajoute au moins une personne dans Réglages.');return;}
+
+  if(!calPassages[dateStr]) calPassages[dateStr] = {};
+
+  const selectedIds = selected.map(w=>w.id);
+  const allSelectedAlreadyActive = selectedIds.every(id=>calPassages[dateStr][id] !== undefined);
+
+  if(allSelectedAlreadyActive){
+    selectedIds.forEach(id=>delete calPassages[dateStr][id]);
+    if(Object.keys(calPassages[dateStr]).length === 0) delete calPassages[dateStr];
   } else {
-    // Nouveau jour → init avec tous les workers actifs à leur tarif par défaut
-    calPassages[dateStr] = {};
-    workers.forEach(w=>{ calPassages[dateStr][w.id] = w.rate; });
+    selected.forEach(w=>{
+      if(calPassages[dateStr][w.id] === undefined) calPassages[dateStr][w.id] = w.rate;
+    });
   }
-  renderCalendar(fixedId);
+  renderCalendar(fixedId,true);
 };
 
 window.toggleWorkerOnDay = function(dateStr, workerId, fixedId){
@@ -1257,7 +1310,7 @@ window.toggleWorkerOnDay = function(dateStr, workerId, fixedId){
     const w = workers.find(x=>x.id===workerId);
     calPassages[dateStr][workerId] = w ? w.rate : 0;
   }
-  renderCalendar(fixedId);
+  renderCalendar(fixedId,true);
 };
 
 window.updateWorkerAmount = function(dateStr, workerId, val){
@@ -1270,8 +1323,8 @@ function updateCalTotal(){
   const byWorker = {};
   Object.values(calPassages).forEach(dayData=>{
     Object.entries(dayData).forEach(([wid,amt])=>{
-      grand += amt;
-      byWorker[wid] = (byWorker[wid]||0) + amt;
+      grand += toNumber(amt);
+      byWorker[wid] = (byWorker[wid]||0) + toNumber(amt);
     });
   });
   const nbDays = Object.keys(calPassages).length;
@@ -1292,7 +1345,7 @@ function renderPassagesList(fixedId){
   const list   = document.getElementById('passages-list');
 
   if(!sorted.length){
-    list.innerHTML = '<div style="font-size:13px;color:var(--hint);padding:8px 0">Touche un jour pour ajouter un passage.</div>';
+    list.innerHTML = '<div style="font-size:13px;color:var(--hint);padding:8px 0">Choisis une personne, puis touche un ou plusieurs jours.</div>';
     document.getElementById('cal-total').innerHTML = '';
     return;
   }
@@ -1326,7 +1379,7 @@ function renderPassagesList(fixedId){
         <div class="passage-day-badge">${dayLabel}</div>
         <div style="display:flex;align-items:center;gap:8px">
           <div class="passage-day-total">${fmt(dayTotal)}</div>
-          <button class="passage-day-remove" onclick="toggleCalDay('${ds}','${fixedId}')">✕</button>
+          <button class="passage-day-remove" onclick="delete calPassages['${ds}']; renderCalendar('${fixedId}',true)">✕</button>
         </div>
       </div>
       <div class="passage-worker-rows">${workerRows}</div>
@@ -1437,7 +1490,7 @@ db.collection('config').doc('categories').onSnapshot(snap=>{
   }
 });
 db.collection('config').doc('fixedItems').onSnapshot(snap=>{
-  if(snap.exists&&snap.data().list){fixedItems=snap.data().list;renderDashboard();}
+  if(snap.exists&&snap.data().list){fixedItems=snap.data().list;populateCatSelect();renderDashboard();}
 });
 db.collection('config').doc('workers').onSnapshot(snap=>{
   if(snap.exists&&snap.data().list){
@@ -1445,7 +1498,7 @@ db.collection('config').doc('workers').onSnapshot(snap=>{
     renderWorkersSettings();
     const modalOpen=!document.getElementById('modal-fixed-add').classList.contains('hidden');
     const calVisible=document.getElementById('cal-section').style.display==='block';
-    if(modalOpen && calVisible && addingPaymentForId) renderCalendar(addingPaymentForId);
+    if(modalOpen && calVisible && addingPaymentForId) renderCalendar(addingPaymentForId,true);
   }
 });
 db.collection('fixedPayments').onSnapshot(snap=>{
