@@ -389,9 +389,9 @@ select.form-input{cursor:pointer}
 
 <div id="toast" class="toast"></div>
 
-<script type="module">
-import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
-import { getFirestore, collection, doc, setDoc, deleteDoc, updateDoc, onSnapshot, enableIndexedDbPersistence } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script>
 
 const firebaseConfig = {
   apiKey: "AIzaSyA6c_RcMS7bK_QL1r6pUi1ZZhMJhqC4j3M",
@@ -401,9 +401,9 @@ const firebaseConfig = {
   messagingSenderId: "249375973254",
   appId: "1:249375973254:web:fa81d30bebbcfc49b2d607"
 };
-const app = initializeApp(firebaseConfig);
-const db = getFirestore(app);
-enableIndexedDbPersistence(db).catch(()=>{});
+firebase.initializeApp(firebaseConfig);
+const db = firebase.firestore();
+db.enablePersistence().catch(()=>{});
 
 const DEFAULT_CATS = [
   {id:'courses',icon:'🛒',name:'Courses',color:'#10b981'},
@@ -511,7 +511,8 @@ window.switchTab = function(tab, el){
   document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
   document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
   document.getElementById('tab-'+tab).classList.add('active');
-  document.getElementById('nav-'+tab).classList.add('active');
+  const navEl = el || document.getElementById('nav-'+tab);
+  if(navEl) navEl.classList.add('active');
   document.getElementById('scroll-area').scrollTop=0;
   if(tab==='history') renderHistory();
   if(tab==='settings'){loadSettings();renderCatGrid();renderFixedEditList();}
@@ -771,7 +772,7 @@ window.saveSettings=async function(){
   if(!b||!g||!m){alert('Remplis tous les champs.');return;}
   settings={budget:b,gContrib:g,mContrib:m};
   setSyncStatus('syncing');
-  await setDoc(doc(db,'config','settings'),settings);
+  await db.collection('config').doc('settings').set(settings);
   renderDashboard();
   showToast('Réglages enregistrés');
 };
@@ -801,9 +802,7 @@ window.saveCat=async function(){
   const newCat={id,icon,name,color};
   categories.push(newCat);
   setSyncStatus('syncing');
-  await setDoc(doc(db,'config','categories'),{list:categories});
-  renderCatGrid();
-  showToast('Catégorie ajoutée');
+  await db.collection('config').doc('categories').set({list:categories});
   closeModal('modal-cat');
   document.getElementById('mc-icon').value='';
   document.getElementById('mc-name').value='';
@@ -813,7 +812,7 @@ window.deleteCat=async function(id,e){
   if(!confirm('Supprimer cette catégorie ?')) return;
   categories=categories.filter(c=>c.id!==id);
   setSyncStatus('syncing');
-  await setDoc(doc(db,'config','categories'),{list:categories});
+  await db.collection('config').doc('categories').set({list:categories});
   renderCatGrid();
   showToast('Catégorie supprimée');
 };
@@ -861,7 +860,7 @@ window.saveFixed=async function(){
     fixedItems.push({id:'fix_'+Date.now().toString(36),icon,name,budget});
   }
   setSyncStatus('syncing');
-  await setDoc(doc(db,'config','fixedItems'),{list:fixedItems});
+  await db.collection('config').doc('fixedItems').set({list:fixedItems});
   renderFixedEditList();renderDashboard();
   showToast(editingFixedId ? 'Dépense fixe modifiée' : 'Dépense fixe ajoutée');
   closeModal('modal-fixed');
@@ -870,7 +869,7 @@ window.deleteFixed=async function(id){
   if(!confirm('Supprimer cette dépense fixe ?')) return;
   fixedItems=fixedItems.filter(f=>f.id!==id);
   setSyncStatus('syncing');
-  await setDoc(doc(db,'config','fixedItems'),{list:fixedItems});
+  await db.collection('config').doc('fixedItems').set({list:fixedItems});
   renderFixedEditList();renderDashboard();
   showToast('Dépense fixe supprimée');
 };
@@ -912,7 +911,7 @@ window.editFixedPayment=function(id){
 window.delFixedPayment=async function(id){
   if(!confirm('Supprimer ce versement ?')) return;
   setSyncStatus('syncing');
-  await deleteDoc(doc(db,'fixedPayments',id));
+  await db.collection('fixedPayments').doc(id).delete();
   showToast('Versement supprimé');
 };
 
@@ -924,14 +923,12 @@ window.saveFixedPayment=async function(){
   setSyncStatus('syncing');
 
   if(editingFixedPaymentId){
-    await updateDoc(doc(db,'fixedPayments',editingFixedPaymentId),{
-      amount, who
-    });
+    await db.collection('fixedPayments').doc(editingFixedPaymentId).update({amount,who});
     showToast('Versement modifié');
   } else {
     const id='fp_'+Date.now().toString(36);
     const payment={id,fixedId:addingPaymentForId,amount,who,month:currentMonth,createdAt:Date.now()};
-    await setDoc(doc(db,'fixedPayments',id),payment);
+    await db.collection('fixedPayments').doc(id).set(payment);
     showToast('Versement ajouté');
   }
 
@@ -973,15 +970,11 @@ window.addExpense=async function(){
   setSyncStatus('syncing');
 
   if(editingExpenseId){
-    await updateDoc(doc(db,'expenses',editingExpenseId),{
-      label,amount,who,cat,date,month
-    });
+    await db.collection('expenses').doc(editingExpenseId).update({label,amount,who,cat,date,month});
     showToast('Dépense modifiée');
   } else {
     const id=Date.now().toString(36)+Math.random().toString(36).slice(2,6);
-    await setDoc(doc(db,'expenses',id),{
-      id,label,amount,who,cat,date,month,createdAt:Date.now()
-    });
+    await db.collection('expenses').doc(id).set({id,label,amount,who,cat,date,month,createdAt:Date.now()});
     showToast('Dépense ajoutée');
   }
 
@@ -994,7 +987,7 @@ window.addExpense=async function(){
 window.delExpense=async function(id){
   if(!confirm('Supprimer cette dépense ?')) return;
   setSyncStatus('syncing');
-  await deleteDoc(doc(db,'expenses',id));
+  await db.collection('expenses').doc(id).delete();
   showToast('Dépense supprimée');
 };
 
@@ -1050,23 +1043,23 @@ setSyncStatus(navigator.onLine?'online':'offline');
 document.getElementById('f-date').value=new Date().toISOString().slice(0,10);
 populateCatSelect();
 
-onSnapshot(collection(db,'expenses'),snap=>{
+db.collection('expenses').onSnapshot(snap=>{
   allExpenses=snap.docs.map(d=>d.data());
   setSyncStatus(navigator.onLine ? 'online' : 'offline');renderDashboard();
 });
-onSnapshot(doc(db,'config','settings'),snap=>{
-  if(snap.exists()){settings=snap.data();renderDashboard();}
+db.collection('config').doc('settings').onSnapshot(snap=>{
+  if(snap.exists){settings=snap.data();renderDashboard();}
 });
-onSnapshot(doc(db,'config','categories'),snap=>{
-  if(snap.exists()&&snap.data().list){
+db.collection('config').doc('categories').onSnapshot(snap=>{
+  if(snap.exists&&snap.data().list){
     categories=[...DEFAULT_CATS,...snap.data().list.filter(c=>!DEFAULT_CATS.find(d=>d.id===c.id))];
     populateCatSelect();
   }
 });
-onSnapshot(doc(db,'config','fixedItems'),snap=>{
-  if(snap.exists()&&snap.data().list){fixedItems=snap.data().list;renderDashboard();}
+db.collection('config').doc('fixedItems').onSnapshot(snap=>{
+  if(snap.exists&&snap.data().list){fixedItems=snap.data().list;renderDashboard();}
 });
-onSnapshot(collection(db,'fixedPayments'),snap=>{
+db.collection('fixedPayments').onSnapshot(snap=>{
   fixedPayments=snap.docs.map(d=>d.data());
   setSyncStatus(navigator.onLine ? 'online' : 'offline');
   renderDashboard();
