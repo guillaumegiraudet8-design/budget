@@ -169,6 +169,43 @@ select.form-input{cursor:pointer}
 .offline-banner{background:var(--amber-dim);border:1px solid rgba(245,158,11,0.3);border-radius:var(--radius-sm);padding:10px 14px;margin-bottom:12px;font-size:13px;color:var(--amber);display:none}
 .add-btn-sm{background:none;border:1px solid var(--border);border-radius:99px;padding:3px 10px;font-size:11px;color:var(--muted);cursor:pointer}
 .add-btn-sm:active{background:var(--surface2)}
+
+/* Calendrier passages */
+.cal-wrap{margin-bottom:14px}
+.cal-label{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px}
+.cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:4px;margin-bottom:10px}
+.cal-day-hdr{font-size:10px;color:var(--hint);text-align:center;padding:2px 0;text-transform:uppercase}
+.cal-day{aspect-ratio:1;border-radius:8px;border:1px solid var(--border);background:var(--surface2);display:flex;flex-direction:column;align-items:center;justify-content:center;font-size:12px;cursor:pointer;transition:background .15s,border-color .15s;-webkit-user-select:none;user-select:none;gap:2px}
+.cal-day:active{background:var(--surface)}
+.cal-day.has-entries{background:var(--blue-dim);border-color:var(--blue);color:var(--blue);font-weight:500}
+.cal-day.empty{border-color:transparent;background:none;cursor:default}
+.cal-day-avatars{display:flex;gap:2px;flex-wrap:wrap;justify-content:center}
+.cal-avatar{width:6px;height:6px;border-radius:50%}
+.passages-list{display:flex;flex-direction:column;gap:8px}
+.passage-day-block{background:var(--surface2);border-radius:var(--radius-sm);overflow:hidden}
+.passage-day-header{display:flex;align-items:center;justify-content:space-between;padding:8px 10px}
+.passage-day-badge{font-size:12px;font-weight:500;color:var(--blue);background:var(--blue-dim);border-radius:6px;padding:3px 8px;white-space:nowrap}
+.passage-day-total{font-size:12px;font-family:'DM Mono',monospace;color:var(--muted)}
+.passage-day-remove{background:none;border:none;color:var(--hint);font-size:14px;cursor:pointer;padding:0 4px}
+.passage-day-remove:active{color:var(--red)}
+.passage-worker-rows{padding:0 10px 8px;display:flex;flex-direction:column;gap:6px}
+.passage-worker-row{display:flex;align-items:center;gap:8px}
+.worker-toggle{width:22px;height:22px;border-radius:50%;border:1.5px solid var(--border);background:none;cursor:pointer;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:11px;transition:all .15s}
+.worker-toggle.active{border-color:var(--green);background:var(--green-dim)}
+.worker-name-lbl{font-size:13px;flex:1}
+.passage-input{width:85px;background:var(--surface);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:'DM Mono',monospace;font-size:13px;padding:5px 8px;outline:none;text-align:right}
+.passage-input:focus{border-color:var(--blue)}
+.passage-input:disabled{opacity:.3}
+.cal-total{font-size:13px;color:var(--muted);margin-top:8px;padding:8px 10px;background:var(--surface2);border-radius:var(--radius-sm)}
+.cal-total strong{color:var(--text);font-family:'DM Mono',monospace}
+.cal-total-by-worker{margin-top:6px}
+.worker-total-row{display:flex;justify-content:space-between;font-size:12px;margin-top:3px}
+.worker-total-row span:first-child{color:var(--muted)}
+.worker-total-row span:last-child{font-family:'DM Mono',monospace}
+.worker-edit-row{display:flex;align-items:center;gap:8px;padding:10px 0;border-bottom:1px solid var(--border)}
+.worker-edit-row:last-child{border-bottom:none}
+.worker-color-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0}
+.worker-rate{font-size:12px;font-family:'DM Mono',monospace;color:var(--muted)}
 </style>
 </head>
 <body>
@@ -297,6 +334,11 @@ select.form-input{cursor:pointer}
       <div id="fixed-edit-list"></div>
       <button class="btn-secondary" onclick="openAddFixed()">+ Ajouter une dépense fixe</button>
     </div>
+    <div class="settings-card" id="workers-card">
+      <div class="settings-card-title">🧹 Femmes de ménage</div>
+      <div id="workers-list"></div>
+      <button class="btn-secondary" onclick="openWorkerModal(null)">+ Ajouter une personne</button>
+    </div>
 
     <div class="settings-card">
       <div class="settings-card-title">Catégories personnalisées</div>
@@ -330,6 +372,10 @@ select.form-input{cursor:pointer}
       <label class="form-label">Budget mensuel (MAD)</label>
       <input class="form-input" type="number" id="mf-budget" placeholder="ex : 5000" inputmode="decimal">
     </div>
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;padding:12px 14px;background:var(--surface2);border-radius:var(--radius-sm)">
+      <input type="checkbox" id="mf-calendar" style="width:18px;height:18px;accent-color:var(--blue);cursor:pointer">
+      <label for="mf-calendar" style="font-size:14px;cursor:pointer;flex:1">Saisie par jours de passage <span style="font-size:12px;color:var(--muted)">(ex: femmes de ménage)</span></label>
+    </div>
     <button class="btn-submit" onclick="saveFixed()">Enregistrer</button>
   </div>
 </div>
@@ -340,19 +386,42 @@ select.form-input{cursor:pointer}
     <button class="modal-close" onclick="closeModal('modal-fixed-add')">✕</button>
     <div class="modal-title" id="modal-fa-title">Ajouter un versement</div>
     <div style="font-size:13px;color:var(--muted);margin-bottom:14px" id="modal-fa-sub"></div>
-    <div class="form-section">
-      <label class="form-label">Montant payé (MAD)</label>
-      <input class="form-input" type="number" id="mfa-amount" placeholder="0" inputmode="decimal">
+
+    <!-- Calendrier passages (affiché uniquement pour dépenses avec hasCalendar=true) -->
+    <div id="cal-section" style="display:none">
+      <div class="cal-wrap">
+        <div class="cal-label" id="cal-month-label">Passages du mois</div>
+        <div class="cal-grid" id="cal-grid"></div>
+        <div class="passages-list" id="passages-list"></div>
+        <div class="cal-total" id="cal-total"></div>
+      </div>
+      <div class="form-section" style="margin-bottom:4px">
+        <label class="form-label">Payé par (budget)</label>
+        <select class="form-input" id="mfa-who-cal">
+          <option value="Guillaume">Guillaume</option>
+          <option value="Merryl">Merryl</option>
+          <option value="Commun">Les deux</option>
+        </select>
+      </div>
+      <button class="btn-submit" onclick="saveCalendarPayment()">Enregistrer les passages</button>
     </div>
-    <div class="form-section" style="margin-bottom:4px">
-      <label class="form-label">Payé par</label>
-      <select class="form-input" id="mfa-who">
-        <option value="Guillaume">Guillaume</option>
-        <option value="Merryl">Merryl</option>
-        <option value="Commun">Les deux</option>
-      </select>
+
+    <!-- Saisie classique (pour les autres dépenses fixes) -->
+    <div id="classic-section">
+      <div class="form-section">
+        <label class="form-label">Montant payé (MAD)</label>
+        <input class="form-input" type="number" id="mfa-amount" placeholder="0" inputmode="decimal">
+      </div>
+      <div class="form-section" style="margin-bottom:4px">
+        <label class="form-label">Payé par</label>
+        <select class="form-input" id="mfa-who">
+          <option value="Guillaume">Guillaume</option>
+          <option value="Merryl">Merryl</option>
+          <option value="Commun">Les deux</option>
+        </select>
+      </div>
+      <button class="btn-submit" id="fixed-payment-submit-btn" onclick="saveFixedPayment()">Ajouter</button>
     </div>
-    <button class="btn-submit" id="fixed-payment-submit-btn" onclick="saveFixedPayment()">Ajouter</button>
   </div>
 </div>
 
@@ -384,6 +453,35 @@ select.form-input{cursor:pointer}
       </select>
     </div>
     <button class="btn-submit" onclick="saveCat()">Ajouter</button>
+  </div>
+</div>
+
+<!-- MODAL : ajouter/modifier femme de ménage -->
+<div class="modal-overlay hidden" id="modal-worker">
+  <div class="modal">
+    <button class="modal-close" onclick="closeModal('modal-worker')">✕</button>
+    <div class="modal-title" id="modal-worker-title">Nouvelle personne</div>
+    <div class="form-section">
+      <label class="form-label">Prénom</label>
+      <input class="form-input" type="text" id="mw-name" placeholder="ex : Naima" autocomplete="off">
+    </div>
+    <div class="form-section" style="margin-bottom:4px">
+      <label class="form-label">Tarif habituel (MAD / passage)</label>
+      <input class="form-input" type="number" id="mw-rate" placeholder="ex : 200" inputmode="decimal">
+    </div>
+    <div class="form-section" style="margin-bottom:4px">
+      <label class="form-label">Couleur</label>
+      <select class="form-input" id="mw-color">
+        <option value="#10b981">Vert</option>
+        <option value="#3b82f6">Bleu</option>
+        <option value="#ec4899">Rose</option>
+        <option value="#f59e0b">Ambre</option>
+        <option value="#a855f7">Violet</option>
+        <option value="#f97316">Orange</option>
+        <option value="#22d3ee">Cyan</option>
+      </select>
+    </div>
+    <button class="btn-submit" onclick="saveWorker()">Enregistrer</button>
   </div>
 </div>
 
@@ -424,7 +522,7 @@ const DEFAULT_FIXED = [
   {id:'fix_marjane',icon:'🛒',name:'Marjane',budget:7000},
   {id:'fix_autre',icon:'📦',name:'Autre fixe',budget:6000},
   {id:'fix_ecole',icon:'🎒',name:'École',budget:7700},
-  {id:'fix_menage',icon:'🧹',name:'Femmes de ménage',budget:6500},
+  {id:'fix_menage',icon:'🧹',name:'Femmes de ménage',budget:6500,hasCalendar:true},
 ];
 
 let allExpenses = [];
@@ -515,7 +613,7 @@ window.switchTab = function(tab, el){
   if(navEl) navEl.classList.add('active');
   document.getElementById('scroll-area').scrollTop=0;
   if(tab==='history') renderHistory();
-  if(tab==='settings'){loadSettings();renderCatGrid();renderFixedEditList();}
+  if(tab==='settings'){loadSettings();renderCatGrid();renderFixedEditList();renderWorkersSettings();}
 };
 
 window.changeMonth = function(dir){
@@ -838,6 +936,7 @@ window.openAddFixed=function(){
   document.getElementById('mf-icon').value='';
   document.getElementById('mf-name').value='';
   document.getElementById('mf-budget').value='';
+  document.getElementById('mf-calendar').checked=false;
   document.getElementById('modal-fixed').classList.remove('hidden');
 };
 window.editFixed=function(id){
@@ -847,17 +946,19 @@ window.editFixed=function(id){
   document.getElementById('mf-icon').value=fi.icon;
   document.getElementById('mf-name').value=fi.name;
   document.getElementById('mf-budget').value=fi.budget;
+  document.getElementById('mf-calendar').checked=!!fi.hasCalendar;
   document.getElementById('modal-fixed').classList.remove('hidden');
 };
 window.saveFixed=async function(){
   const icon=document.getElementById('mf-icon').value.trim()||'📦';
   const name=document.getElementById('mf-name').value.trim();
   const budget=parseFloat(document.getElementById('mf-budget').value);
+  const hasCalendar=document.getElementById('mf-calendar').checked;
   if(!name||isNaN(budget)){alert('Remplis tous les champs.');return;}
   if(editingFixedId){
-    fixedItems=fixedItems.map(f=>f.id===editingFixedId?{...f,icon,name,budget}:f);
+    fixedItems=fixedItems.map(f=>f.id===editingFixedId?{...f,icon,name,budget,hasCalendar}:f);
   } else {
-    fixedItems.push({id:'fix_'+Date.now().toString(36),icon,name,budget});
+    fixedItems.push({id:'fix_'+Date.now().toString(36),icon,name,budget,hasCalendar});
   }
   setSyncStatus('syncing');
   await db.collection('config').doc('fixedItems').set({list:fixedItems});
@@ -888,6 +989,14 @@ window.openAddPayment=function(fixedId){
   document.getElementById('modal-fa-sub').textContent=`${fmt(paid)} payés sur ${fmt(fi.budget)} ce mois`;
 
   resetFixedPaymentForm();
+
+  // Mode calendrier si la dépense a hasCalendar=true
+  const useCalendar = !!fi.hasCalendar;
+  document.getElementById('cal-section').style.display = useCalendar ? 'block' : 'none';
+  document.getElementById('classic-section').style.display = useCalendar ? 'none' : 'block';
+
+  if(useCalendar) renderCalendar(fixedId);
+
   document.getElementById('modal-fixed-add').classList.remove('hidden');
 };
 
@@ -991,6 +1100,244 @@ window.delExpense=async function(id){
   showToast('Dépense supprimée');
 };
 
+// ── WORKERS (femmes de ménage) ───────────────────────────
+// workers = [{id, name, rate, color}, ...]
+const WORKER_COLORS = ['#10b981','#ec4899','#3b82f6','#f59e0b','#a855f7','#f97316','#22d3ee'];
+let workers = [
+  {id:'w_naima',   name:'Naima',   rate:200, color:'#10b981'},
+  {id:'w_yollande',name:'Yollande',rate:150, color:'#ec4899'},
+];
+let editingWorkerId = null;
+
+function getWorkersFixedId(){
+  // Trouve l'id du fixed item avec hasCalendar
+  return fixedItems.find(f=>f.hasCalendar)?.id || null;
+}
+
+function renderWorkersSettings(){
+  const card = document.getElementById('workers-card');
+  const el   = document.getElementById('workers-list');
+  if(!card||!el) return;
+  // N'afficher la carte que si un fixed item hasCalendar existe
+  const fid = getWorkersFixedId();
+  card.style.display = fid ? 'block' : 'none';
+  if(!fid) return;
+  if(!workers.length){
+    el.innerHTML='<div style="font-size:13px;color:var(--hint);padding:8px 0">Aucune personne configurée.</div>';
+    return;
+  }
+  el.innerHTML = workers.map(w=>`
+    <div class="worker-edit-row">
+      <div class="worker-color-dot" style="background:${w.color}"></div>
+      <div style="flex:1;min-width:0">
+        <div style="font-size:13px">${w.name}</div>
+        <div class="worker-rate">${w.rate} MAD / passage</div>
+      </div>
+      <button class="icon-btn" onclick="openWorkerModal('${w.id}')">✏️</button>
+      <button class="icon-btn danger" onclick="deleteWorker('${w.id}')">✕</button>
+    </div>`).join('');
+}
+
+window.openWorkerModal = function(id){
+  editingWorkerId = id;
+  const w = id ? workers.find(x=>x.id===id) : null;
+  document.getElementById('modal-worker-title').textContent = w ? 'Modifier' : 'Nouvelle personne';
+  document.getElementById('mw-name').value  = w ? w.name  : '';
+  document.getElementById('mw-rate').value  = w ? w.rate  : '';
+  document.getElementById('mw-color').value = w ? w.color : WORKER_COLORS[workers.length % WORKER_COLORS.length];
+  document.getElementById('modal-worker').classList.remove('hidden');
+};
+
+window.saveWorker = async function(){
+  const name  = document.getElementById('mw-name').value.trim();
+  const rate  = parseFloat(document.getElementById('mw-rate').value);
+  const color = document.getElementById('mw-color').value;
+  if(!name || isNaN(rate)){alert('Remplis le prénom et le tarif.');return;}
+  if(editingWorkerId){
+    workers = workers.map(w=>w.id===editingWorkerId ? {...w,name,rate,color} : w);
+  } else {
+    workers.push({id:'w_'+Date.now().toString(36), name, rate, color});
+  }
+  setSyncStatus('syncing');
+  await db.collection('config').doc('workers').set({list:workers});
+  renderWorkersSettings();
+  showToast(editingWorkerId ? 'Modifié' : name+' ajoutée');
+  closeModal('modal-worker');
+};
+
+window.deleteWorker = async function(id){
+  if(!confirm('Supprimer cette personne ?')) return;
+  workers = workers.filter(w=>w.id!==id);
+  await db.collection('config').doc('workers').set({list:workers});
+  renderWorkersSettings();
+  showToast('Supprimée');
+};
+
+// ── CALENDRIER PASSAGES ──────────────────────────────────
+// calPassages = { 'YYYY-MM-DD': { workerId: amount, ... }, ... }
+let calPassages = {};
+
+function renderCalendar(fixedId){
+  const [y,m] = currentMonth.split('-').map(Number);
+  const daysInMonth = new Date(y, m, 0).getDate();
+  const offset = (new Date(y, m-1, 1).getDay()+6)%7;
+
+  // Charge les passages existants
+  calPassages = {};
+  fixedPayments
+    .filter(p=>p.month===currentMonth && p.fixedId===fixedId && p.passages)
+    .forEach(p=>{ Object.assign(calPassages, p.passages); });
+
+  const monthLbl = new Date(y,m-1,1).toLocaleDateString('fr-FR',{month:'long',year:'numeric'});
+  document.getElementById('cal-month-label').textContent = 'Passages — '+monthLbl;
+
+  const hdrs = ['Lu','Ma','Me','Je','Ve','Sa','Di'];
+  let html = hdrs.map(d=>`<div class="cal-day-hdr">${d}</div>`).join('');
+  for(let i=0;i<offset;i++) html+=`<div class="cal-day empty"></div>`;
+  for(let d=1;d<=daysInMonth;d++){
+    const ds = `${currentMonth}-${String(d).padStart(2,'0')}`;
+    const dayData = calPassages[ds];
+    const hasEntries = dayData && Object.keys(dayData).length > 0;
+    let avatars = '';
+    if(hasEntries){
+      avatars = `<div class="cal-day-avatars">${
+        Object.keys(dayData).map(wid=>{
+          const w = workers.find(x=>x.id===wid);
+          return w ? `<div class="cal-avatar" style="background:${w.color}"></div>` : '';
+        }).join('')
+      }</div>`;
+    }
+    html += `<div class="cal-day${hasEntries?' has-entries':''}" onclick="toggleCalDay('${ds}','${fixedId}')">${d}${avatars}</div>`;
+  }
+  document.getElementById('cal-grid').innerHTML = html;
+  renderPassagesList(fixedId);
+}
+
+window.toggleCalDay = function(dateStr, fixedId){
+  if(calPassages[dateStr] && Object.keys(calPassages[dateStr]).length > 0){
+    // Déjà des entrées → on efface
+    delete calPassages[dateStr];
+  } else {
+    // Nouveau jour → init avec tous les workers actifs à leur tarif par défaut
+    calPassages[dateStr] = {};
+    workers.forEach(w=>{ calPassages[dateStr][w.id] = w.rate; });
+  }
+  renderCalendar(fixedId);
+};
+
+window.toggleWorkerOnDay = function(dateStr, workerId, fixedId){
+  if(!calPassages[dateStr]) calPassages[dateStr] = {};
+  if(calPassages[dateStr][workerId] !== undefined){
+    delete calPassages[dateStr][workerId];
+    if(Object.keys(calPassages[dateStr]).length === 0) delete calPassages[dateStr];
+  } else {
+    const w = workers.find(x=>x.id===workerId);
+    calPassages[dateStr][workerId] = w ? w.rate : 0;
+  }
+  renderCalendar(fixedId);
+};
+
+window.updateWorkerAmount = function(dateStr, workerId, val){
+  if(calPassages[dateStr]) calPassages[dateStr][workerId] = parseFloat(val)||0;
+  updateCalTotal();
+};
+
+function updateCalTotal(){
+  let grand = 0;
+  const byWorker = {};
+  Object.values(calPassages).forEach(dayData=>{
+    Object.entries(dayData).forEach(([wid,amt])=>{
+      grand += amt;
+      byWorker[wid] = (byWorker[wid]||0) + amt;
+    });
+  });
+  const nbDays = Object.keys(calPassages).length;
+  let html = `<strong>${fmt(grand)}</strong> — ${nbDays} jour${nbDays>1?'s':''}`;
+  if(Object.keys(byWorker).length){
+    html += '<div class="cal-total-by-worker">';
+    Object.entries(byWorker).forEach(([wid,amt])=>{
+      const w = workers.find(x=>x.id===wid);
+      if(w) html += `<div class="worker-total-row"><span>${w.name}</span><span>${fmt(amt)}</span></div>`;
+    });
+    html += '</div>';
+  }
+  document.getElementById('cal-total').innerHTML = html;
+}
+
+function renderPassagesList(fixedId){
+  const sorted = Object.keys(calPassages).sort();
+  const list   = document.getElementById('passages-list');
+
+  if(!sorted.length){
+    list.innerHTML = '<div style="font-size:13px;color:var(--hint);padding:8px 0">Touche un jour pour ajouter un passage.</div>';
+    document.getElementById('cal-total').innerHTML = '';
+    return;
+  }
+
+  list.innerHTML = sorted.map(ds=>{
+    const dayData = calPassages[ds]||{};
+    const dayTotal = Object.values(dayData).reduce((s,v)=>s+(parseFloat(v)||0),0);
+    const dayLabel = new Date(ds+'T12:00:00').toLocaleDateString('fr-FR',{weekday:'long',day:'numeric'});
+
+    const workerRows = workers.map(w=>{
+      const active = dayData[w.id] !== undefined;
+      const amount = active ? (dayData[w.id]||0) : w.rate;
+      return `<div class="passage-worker-row">
+        <button class="worker-toggle${active?' active':''}"
+          onclick="toggleWorkerOnDay('${ds}','${w.id}','${fixedId}')"
+          style="${active?'border-color:'+w.color+';background:'+w.color+'22':''}"
+          title="${active?'Retirer':'Ajouter'} ${w.name}">
+          ${active?'✓':''}
+        </button>
+        <div class="worker-name-lbl" style="color:${active?w.color:'var(--hint)'}">${w.name}</div>
+        <input class="passage-input" type="number" inputmode="decimal"
+          value="${active?amount:''}"
+          placeholder="${w.rate}"
+          ${active?'':'disabled'}
+          onchange="updateWorkerAmount('${ds}','${w.id}',this.value)">
+      </div>`;
+    }).join('');
+
+    return `<div class="passage-day-block">
+      <div class="passage-day-header">
+        <div class="passage-day-badge">${dayLabel}</div>
+        <div style="display:flex;align-items:center;gap:8px">
+          <div class="passage-day-total">${fmt(dayTotal)}</div>
+          <button class="passage-day-remove" onclick="toggleCalDay('${ds}','${fixedId}')">✕</button>
+        </div>
+      </div>
+      <div class="passage-worker-rows">${workerRows}</div>
+    </div>`;
+  }).join('');
+
+  updateCalTotal();
+}
+
+window.saveCalendarPayment = async function(){
+  const who  = document.getElementById('mfa-who-cal').value;
+  const keys = Object.keys(calPassages);
+  if(!keys.length){alert('Sélectionne au moins un jour de passage.');return;}
+
+  let grand = 0;
+  Object.values(calPassages).forEach(d=>Object.values(d).forEach(v=>grand+=(parseFloat(v)||0)));
+  if(grand<=0){alert('Au moins un montant doit être supérieur à 0.');return;}
+
+  setSyncStatus('syncing');
+  // Supprime anciens
+  const old = fixedPayments.filter(p=>p.month===currentMonth&&p.fixedId===addingPaymentForId&&p.passages);
+  for(const op of old) await db.collection('fixedPayments').doc(op.id).delete();
+
+  const id = 'fp_'+Date.now().toString(36);
+  await db.collection('fixedPayments').doc(id).set({
+    id, fixedId:addingPaymentForId, amount:grand, who,
+    month:currentMonth, passages:calPassages, createdAt:Date.now()
+  });
+  showToast(`${keys.length} jour${keys.length>1?'s':''} enregistrés — ${fmt(grand)}`);
+  calPassages = {};
+  closeModal('modal-fixed-add');
+};
+// ─────────────────────────────────────────────────────────
+
 window.closeModal=function(id){
   document.getElementById(id).classList.add('hidden');
   if(id==='modal-fixed-add') resetFixedPaymentForm();
@@ -1058,6 +1405,9 @@ db.collection('config').doc('categories').onSnapshot(snap=>{
 });
 db.collection('config').doc('fixedItems').onSnapshot(snap=>{
   if(snap.exists&&snap.data().list){fixedItems=snap.data().list;renderDashboard();}
+});
+db.collection('config').doc('workers').onSnapshot(snap=>{
+  if(snap.exists&&snap.data().list) workers=snap.data().list;
 });
 db.collection('fixedPayments').onSnapshot(snap=>{
   fixedPayments=snap.docs.map(d=>d.data());
