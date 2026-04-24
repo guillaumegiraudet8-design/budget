@@ -112,6 +112,8 @@ body{display:flex;flex-direction:column}
 .form-section{margin-bottom:16px}
 .form-label{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px;display:block}
 .form-input{width:100%;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-family:'DM Sans',sans-serif;font-size:15px;padding:12px 14px;outline:none;transition:border-color .2s;-webkit-appearance:none;appearance:none}
+input,select,textarea{background-color:var(--surface);color:var(--text)}
+input[type="date"]{color-scheme:dark}
 .form-input:focus{border-color:var(--blue)}
 .form-input::placeholder{color:var(--hint)}
 .form-row-2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
@@ -538,6 +540,13 @@ let editingFixedPaymentId = null;
 
 function fmt(n){return Math.round(n).toLocaleString('fr-FR')+' MAD'}
 function fmtS(n){return Math.round(n).toLocaleString('fr-FR')}
+function toNumber(v){
+  return parseFloat(String(v ?? '').replace(',', '.')) || 0;
+}
+function makeLocalId(prefix){
+  if(window.crypto && crypto.randomUUID) return prefix+'_'+crypto.randomUUID();
+  return prefix+'_'+Date.now().toString(36)+Math.random().toString(36).slice(2,8);
+}
 function getMonthLabel(ym){
   const [y,m]=ym.split('-');
   return new Date(+y,+m-1,1).toLocaleDateString('fr-FR',{month:'long',year:'numeric'});
@@ -852,9 +861,9 @@ function loadSettings(){
 }
 
 window.previewContrib=function(){
-  const b=parseFloat(document.getElementById('set-budget').value)||0;
-  const g=parseFloat(document.getElementById('set-g').value)||0;
-  const m=parseFloat(document.getElementById('set-m').value)||0;
+  const b=toNumber(document.getElementById('set-budget').value);
+  const g=toNumber(document.getElementById('set-g').value);
+  const m=toNumber(document.getElementById('set-m').value);
   const el=document.getElementById('pct-preview');
   if(!b){el.innerHTML='';return;}
   const diff=Math.abs(g+m-b);
@@ -864,9 +873,9 @@ window.previewContrib=function(){
 };
 
 window.saveSettings=async function(){
-  const b=parseFloat(document.getElementById('set-budget').value);
-  const g=parseFloat(document.getElementById('set-g').value);
-  const m=parseFloat(document.getElementById('set-m').value);
+  const b=toNumber(document.getElementById('set-budget').value);
+  const g=toNumber(document.getElementById('set-g').value);
+  const m=toNumber(document.getElementById('set-m').value);
   if(!b||!g||!m){alert('Remplis tous les champs.');return;}
   settings={budget:b,gContrib:g,mContrib:m};
   setSyncStatus('syncing');
@@ -896,7 +905,7 @@ window.saveCat=async function(){
   const name=document.getElementById('mc-name').value.trim();
   const color=document.getElementById('mc-color').value;
   if(!name){alert('Donne un nom à la catégorie.');return;}
-  const id='cat_'+Date.now().toString(36);
+  const id=makeLocalId('cat');
   const newCat={id,icon,name,color};
   categories.push(newCat);
   setSyncStatus('syncing');
@@ -952,13 +961,13 @@ window.editFixed=function(id){
 window.saveFixed=async function(){
   const icon=document.getElementById('mf-icon').value.trim()||'📦';
   const name=document.getElementById('mf-name').value.trim();
-  const budget=parseFloat(document.getElementById('mf-budget').value);
+  const budget=toNumber(document.getElementById('mf-budget').value);
   const hasCalendar=document.getElementById('mf-calendar').checked;
   if(!name||isNaN(budget)){alert('Remplis tous les champs.');return;}
   if(editingFixedId){
     fixedItems=fixedItems.map(f=>f.id===editingFixedId?{...f,icon,name,budget,hasCalendar}:f);
   } else {
-    fixedItems.push({id:'fix_'+Date.now().toString(36),icon,name,budget,hasCalendar});
+    fixedItems.push({id:makeLocalId('fix'),icon,name,budget,hasCalendar});
   }
   setSyncStatus('syncing');
   await db.collection('config').doc('fixedItems').set({list:fixedItems});
@@ -1006,28 +1015,25 @@ window.editFixedPayment=function(id){
 
   const fi = fixedItems.find(f=>f.id===payment.fixedId);
   addingPaymentForId = payment.fixedId;
+  editingFixedPaymentId = id;
 
-  // Si c'est un paiement calendrier, on rouvre le calendrier au lieu de la saisie classique.
+  document.getElementById('modal-fa-title').textContent=(fi ? fi.icon+' '+fi.name : 'Modifier le versement');
+  document.getElementById('modal-fa-sub').textContent=`Modification du versement du mois ${payment.month}`;
+
   if(payment.passages || (fi && fi.hasCalendar)){
-    editingFixedPaymentId = null;
-    document.getElementById('modal-fa-title').textContent=(fi ? fi.icon+' '+fi.name : 'Modifier le calendrier');
-    document.getElementById('modal-fa-sub').textContent=`Modification des passages du mois ${payment.month}`;
-    resetFixedPaymentForm();
     document.getElementById('cal-section').style.display='block';
     document.getElementById('classic-section').style.display='none';
+    document.getElementById('mfa-who-cal').value = payment.who || 'Commun';
     renderCalendar(payment.fixedId);
     document.getElementById('modal-fixed-add').classList.remove('hidden');
     return;
   }
 
-  editingFixedPaymentId = id;
-  document.getElementById('modal-fa-title').textContent=(fi ? fi.icon+' '+fi.name : 'Modifier le versement');
-  document.getElementById('modal-fa-sub').textContent=`Modification du versement du mois ${payment.month}`;
+  document.getElementById('cal-section').style.display='none';
+  document.getElementById('classic-section').style.display='block';
   document.getElementById('mfa-amount').value = payment.amount ?? '';
   document.getElementById('mfa-who').value = payment.who || 'Guillaume';
   document.getElementById('fixed-payment-submit-btn').textContent = 'Enregistrer';
-  document.getElementById('cal-section').style.display='none';
-  document.getElementById('classic-section').style.display='block';
 
   document.getElementById('modal-fixed-add').classList.remove('hidden');
 };
@@ -1040,7 +1046,7 @@ window.delFixedPayment=async function(id){
 };
 
 window.saveFixedPayment=async function(){
-  const amount=parseFloat(document.getElementById('mfa-amount').value);
+  const amount=toNumber(document.getElementById('mfa-amount').value);
   const who=document.getElementById('mfa-who').value;
   if(isNaN(amount)||amount<=0){alert('Montant invalide.');return;}
 
@@ -1050,9 +1056,10 @@ window.saveFixedPayment=async function(){
     await db.collection('fixedPayments').doc(editingFixedPaymentId).update({amount,who});
     showToast('Versement modifié');
   } else {
-    const id='fp_'+Date.now().toString(36);
+    const ref=db.collection('fixedPayments').doc();
+    const id=ref.id;
     const payment={id,fixedId:addingPaymentForId,amount,who,month:currentMonth,createdAt:Date.now()};
-    await db.collection('fixedPayments').doc(id).set(payment);
+    await ref.set(payment);
     showToast('Versement ajouté');
   }
 
@@ -1080,7 +1087,7 @@ window.editExpense=function(id){
 
 window.addExpense=async function(){
   const label=document.getElementById('f-label').value.trim();
-  const amount=parseFloat(document.getElementById('f-amount').value);
+  const amount=toNumber(document.getElementById('f-amount').value);
   const who=document.getElementById('f-who').value;
   const cat=document.getElementById('f-cat').value;
   const date=document.getElementById('f-date').value||new Date().toISOString().slice(0,10);
@@ -1097,8 +1104,9 @@ window.addExpense=async function(){
     await db.collection('expenses').doc(editingExpenseId).update({label,amount,who,cat,date,month});
     showToast('Dépense modifiée');
   } else {
-    const id=Date.now().toString(36)+Math.random().toString(36).slice(2,6);
-    await db.collection('expenses').doc(id).set({id,label,amount,who,cat,date,month,createdAt:Date.now()});
+    const ref=db.collection('expenses').doc();
+    const id=ref.id;
+    await ref.set({id,label,amount,who,cat,date,month,createdAt:Date.now()});
     showToast('Dépense ajoutée');
   }
 
@@ -1165,13 +1173,13 @@ window.openWorkerModal = function(id){
 
 window.saveWorker = async function(){
   const name  = document.getElementById('mw-name').value.trim();
-  const rate  = parseFloat(document.getElementById('mw-rate').value);
+  const rate  = toNumber(document.getElementById('mw-rate').value);
   const color = document.getElementById('mw-color').value;
   if(!name || isNaN(rate)){alert('Remplis le prénom et le tarif.');return;}
   if(editingWorkerId){
     workers = workers.map(w=>w.id===editingWorkerId ? {...w,name,rate,color} : w);
   } else {
-    workers.push({id:'w_'+Date.now().toString(36), name, rate, color});
+    workers.push({id:makeLocalId('w'), name, rate, color});
   }
   setSyncStatus('syncing');
   await db.collection('config').doc('workers').set({list:workers});
@@ -1253,7 +1261,7 @@ window.toggleWorkerOnDay = function(dateStr, workerId, fixedId){
 };
 
 window.updateWorkerAmount = function(dateStr, workerId, val){
-  if(calPassages[dateStr]) calPassages[dateStr][workerId] = parseFloat(val)||0;
+  if(calPassages[dateStr]) calPassages[dateStr][workerId] = toNumber(val);
   updateCalTotal();
 };
 
@@ -1291,7 +1299,7 @@ function renderPassagesList(fixedId){
 
   list.innerHTML = sorted.map(ds=>{
     const dayData = calPassages[ds]||{};
-    const dayTotal = Object.values(dayData).reduce((s,v)=>s+(parseFloat(v)||0),0);
+    const dayTotal = Object.values(dayData).reduce((s,v)=>s+toNumber(v),0);
     const dayLabel = new Date(ds+'T12:00:00').toLocaleDateString('fr-FR',{weekday:'long',day:'numeric'});
 
     const workerRows = workers.map(w=>{
@@ -1334,7 +1342,7 @@ window.saveCalendarPayment = async function(){
   if(!keys.length){alert('Sélectionne au moins un jour de passage.');return;}
 
   let grand = 0;
-  Object.values(calPassages).forEach(d=>Object.values(d).forEach(v=>grand+=(parseFloat(v)||0)));
+  Object.values(calPassages).forEach(d=>Object.values(d).forEach(v=>grand+=toNumber(v)));
   if(grand<=0){alert('Au moins un montant doit être supérieur à 0.');return;}
 
   setSyncStatus('syncing');
@@ -1342,8 +1350,9 @@ window.saveCalendarPayment = async function(){
   const old = fixedPayments.filter(p=>p.month===currentMonth&&p.fixedId===addingPaymentForId&&p.passages);
   for(const op of old) await db.collection('fixedPayments').doc(op.id).delete();
 
-  const id = 'fp_'+Date.now().toString(36);
-  await db.collection('fixedPayments').doc(id).set({
+  const ref = db.collection('fixedPayments').doc();
+  const id = ref.id;
+  await ref.set({
     id, fixedId:addingPaymentForId, amount:grand, who,
     month:currentMonth, passages:calPassages, createdAt:Date.now()
   });
@@ -1365,34 +1374,24 @@ document.querySelectorAll('.modal-overlay').forEach(o=>{
 
 window.exportCSV=function(){
   const md=getMonthData(currentMonth);
-  const rows=[['Type','Date/Mois','Libelle','Categorie/Fixe','Paye par budget','Personne passage','Montant MAD']];
+  const rows=[['Type','Date/Mois','Libelle','Categorie/Fixe','Paye par','Montant MAD']];
 
   md.expenses.forEach(e=>{
     const cat=catById(e.cat);
-    rows.push(['Dépense',e.date||'',e.label||'',cat.name,e.who||'','',e.amount||0]);
+    rows.push(['Dépense',e.date||'',e.label||'',cat.name,e.who||'',e.amount||0]);
   });
 
   md.payments.forEach(p=>{
     const fi=fixedItems.find(f=>f.id===p.fixedId);
-    const fixedName=fi?fi.name:p.fixedId;
-
     if(p.passages){
-      Object.entries(p.passages).forEach(([dateStr,dayData])=>{
-        Object.entries(dayData||{}).forEach(([workerId,amount])=>{
+      Object.entries(p.passages).forEach(([date,dayData])=>{
+        Object.entries(dayData).forEach(([workerId,amount])=>{
           const worker=workers.find(w=>w.id===workerId);
-          rows.push([
-            'Passage calendrier',
-            dateStr,
-            fixedName,
-            'Fixe',
-            p.who||'',
-            worker?worker.name:workerId,
-            amount||0
-          ]);
+          rows.push(['Passage',date,worker?worker.name:workerId,fi?fi.name:p.fixedId,p.who||'',toNumber(amount)]);
         });
       });
     } else {
-      rows.push(['Dépense fixe',p.month||'',fixedName,'Fixe',p.who||'','',p.amount||0]);
+      rows.push(['Dépense fixe',p.month||'',fi?fi.name:p.fixedId,'Fixe',p.who||'',p.amount||0]);
     }
   });
 
@@ -1444,10 +1443,9 @@ db.collection('config').doc('workers').onSnapshot(snap=>{
   if(snap.exists&&snap.data().list){
     workers=snap.data().list;
     renderWorkersSettings();
-    if(document.getElementById('modal-fixed-add') && !document.getElementById('modal-fixed-add').classList.contains('hidden') && addingPaymentForId){
-      const fi=fixedItems.find(f=>f.id===addingPaymentForId);
-      if(fi && fi.hasCalendar) renderCalendar(addingPaymentForId);
-    }
+    const modalOpen=!document.getElementById('modal-fixed-add').classList.contains('hidden');
+    const calVisible=document.getElementById('cal-section').style.display==='block';
+    if(modalOpen && calVisible && addingPaymentForId) renderCalendar(addingPaymentForId);
   }
 });
 db.collection('fixedPayments').onSnapshot(snap=>{
