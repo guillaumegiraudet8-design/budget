@@ -402,6 +402,7 @@ select.form-input{cursor:pointer}
         <div class="cal-grid" id="cal-grid"></div>
         <div class="passages-list" id="passages-list"></div>
         <div class="cal-total" id="cal-total"></div>
+        <button class="btn-secondary" onclick="clearCalendar()">Réinitialiser le mois</button>
       </div>
       <div class="form-section" style="margin-bottom:4px">
         <label class="form-label">Payé par (budget)</label>
@@ -1137,7 +1138,7 @@ window.addExpense=async function(){
 
   resetExpenseForm();
   currentMonth=month;
-  switchTab('dashboard');
+  switchTab('dashboard', document.getElementById('nav-dashboard'));
 };
 
 
@@ -1389,17 +1390,46 @@ function renderPassagesList(fixedId){
   updateCalTotal();
 }
 
+window.clearCalendar=function(){
+  if(!confirm('Supprimer tous les passages du mois ?')) return;
+  calPassages = {};
+  renderCalendar(addingPaymentForId,true);
+  showToast('Calendrier réinitialisé');
+};
+
 window.saveCalendarPayment = async function(){
   const who  = document.getElementById('mfa-who-cal').value;
   const keys = Object.keys(calPassages);
-  if(!keys.length){alert('Sélectionne au moins un jour de passage.');return;}
+
+  if(!keys.length){
+    alert('Sélectionne au moins un jour de passage.');
+    return;
+  }
 
   let grand = 0;
   Object.values(calPassages).forEach(d=>Object.values(d).forEach(v=>grand+=toNumber(v)));
-  if(grand<=0){alert('Au moins un montant doit être supérieur à 0.');return;}
+
+  if(grand<=0){
+    alert('Au moins un montant doit être supérieur à 0.');
+    return;
+  }
+
+  const alreadyExists = fixedPayments.some(p =>
+    p.month===currentMonth &&
+    p.fixedId===addingPaymentForId &&
+    p.passages
+  );
+
+  if(alreadyExists){
+    const confirmReplace = confirm(
+      'Attention : tu vas remplacer tous les passages du mois.\n\nContinuer ?'
+    );
+    if(!confirmReplace) return;
+  }
 
   setSyncStatus('syncing');
-  // Supprime anciens
+
+  // Supprime les anciens passages du mois pour cette dépense fixe afin d’éviter les doublons.
   const old = fixedPayments.filter(p=>p.month===currentMonth&&p.fixedId===addingPaymentForId&&p.passages);
   for(const op of old) await db.collection('fixedPayments').doc(op.id).delete();
 
@@ -1409,7 +1439,8 @@ window.saveCalendarPayment = async function(){
     id, fixedId:addingPaymentForId, amount:grand, who,
     month:currentMonth, passages:calPassages, createdAt:Date.now()
   });
-  showToast(`${keys.length} jour${keys.length>1?'s':''} enregistrés — ${fmt(grand)}`);
+
+  showToast(`${keys.length} jour${keys.length>1?'s':''} enregistré${keys.length>1?'s':''} — ${fmt(grand)}`);
   calPassages = {};
   closeModal('modal-fixed-add');
 };
