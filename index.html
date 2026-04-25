@@ -544,6 +544,8 @@ let editingFixedId = null;
 let addingPaymentForId = null;
 let editingExpenseId = null;
 let editingFixedPaymentId = null;
+let lastWorkerScope = 'all';
+window.__saving = false;
 
 function fmt(n){return Math.round(n).toLocaleString('fr-FR')+' MAD'}
 function fmtS(n){return Math.round(n).toLocaleString('fr-FR')}
@@ -1072,9 +1074,12 @@ window.delFixedPayment=async function(id){
 };
 
 window.saveFixedPayment=async function(){
+  if(window.__saving) return;
+  window.__saving = true;
+  try {
   const amount=toNumber(document.getElementById('mfa-amount').value);
   const who=document.getElementById('mfa-who').value;
-  if(isNaN(amount)||amount<=0){alert('Montant invalide.');return;}
+  if(isNaN(amount)||amount<=0){alert('Montant invalide.'); window.__saving = false; return;}
 
   setSyncStatus('syncing');
 
@@ -1091,6 +1096,12 @@ window.saveFixedPayment=async function(){
 
   resetFixedPaymentForm();
   closeModal('modal-fixed-add');
+  } catch(err) {
+    console.error(err);
+    alert('Erreur pendant l’enregistrement du versement.');
+  } finally {
+    window.__saving = false;
+  }
 };
 
 
@@ -1102,7 +1113,12 @@ window.editExpense=function(id){
   document.getElementById('f-label').value = exp.label || '';
   document.getElementById('f-amount').value = exp.amount ?? '';
   document.getElementById('f-who').value = exp.who || 'Guillaume';
-  document.getElementById('f-cat').value = exp.cat || 'autre';
+  const catSelect = document.getElementById('f-cat');
+  if(document.querySelector(`#f-cat option[value="${exp.cat}"]`)){
+    catSelect.value = exp.cat;
+  } else {
+    catSelect.selectedIndex = 0;
+  }
   document.getElementById('f-date').value = exp.date || new Date().toISOString().slice(0,10);
 
   const submitBtn = document.querySelector('#tab-add .btn-submit');
@@ -1112,6 +1128,9 @@ window.editExpense=function(id){
 };
 
 window.addExpense=async function(){
+  if(window.__saving) return;
+  window.__saving = true;
+  try {
   const label=document.getElementById('f-label').value.trim();
   const amount=toNumber(document.getElementById('f-amount').value);
   const who=document.getElementById('f-who').value;
@@ -1120,6 +1139,7 @@ window.addExpense=async function(){
 
   if(!label||isNaN(amount)||amount<=0){
     alert('Libellé et montant requis.');
+    window.__saving = false;
     return;
   }
 
@@ -1139,6 +1159,12 @@ window.addExpense=async function(){
   resetExpenseForm();
   currentMonth=month;
   switchTab('dashboard', document.getElementById('nav-dashboard'));
+  } catch(err) {
+    console.error(err);
+    alert('Erreur pendant l’enregistrement de la dépense.');
+  } finally {
+    window.__saving = false;
+  }
 };
 
 
@@ -1236,9 +1262,12 @@ function selectedCalendarWorkers(){
 function populateCalendarWorkerSelect(){
   const sel = document.getElementById('cal-worker-scope');
   if(!sel) return;
-  const previous = sel.value || 'all';
+
   sel.innerHTML = `<option value="all">Toutes les personnes</option>` + workers.map(w=>`<option value="${w.id}">${w.name}</option>`).join('');
-  sel.value = workers.find(w=>w.id===previous) ? previous : 'all';
+  sel.value = workers.find(w=>w.id===lastWorkerScope) ? lastWorkerScope : 'all';
+  sel.onchange = function(){
+    lastWorkerScope = this.value;
+  };
 }
 
 function loadCalendarPassages(fixedId){
@@ -1398,11 +1427,15 @@ window.clearCalendar=function(){
 };
 
 window.saveCalendarPayment = async function(){
+  if(window.__saving) return;
+  window.__saving = true;
+  try {
   const who  = document.getElementById('mfa-who-cal').value;
   const keys = Object.keys(calPassages);
 
   if(!keys.length){
     alert('Sélectionne au moins un jour de passage.');
+    window.__saving = false;
     return;
   }
 
@@ -1411,6 +1444,7 @@ window.saveCalendarPayment = async function(){
 
   if(grand<=0){
     alert('Au moins un montant doit être supérieur à 0.');
+    window.__saving = false;
     return;
   }
 
@@ -1424,7 +1458,7 @@ window.saveCalendarPayment = async function(){
     const confirmReplace = confirm(
       'Attention : tu vas remplacer tous les passages du mois.\n\nContinuer ?'
     );
-    if(!confirmReplace) return;
+    if(!confirmReplace){ window.__saving = false; return; }
   }
 
   setSyncStatus('syncing');
@@ -1443,6 +1477,12 @@ window.saveCalendarPayment = async function(){
   showToast(`${keys.length} jour${keys.length>1?'s':''} enregistré${keys.length>1?'s':''} — ${fmt(grand)}`);
   calPassages = {};
   closeModal('modal-fixed-add');
+  } catch(err) {
+    console.error(err);
+    alert('Erreur pendant l’enregistrement du calendrier.');
+  } finally {
+    window.__saving = false;
+  }
 };
 // ─────────────────────────────────────────────────────────
 
