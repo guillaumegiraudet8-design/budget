@@ -208,6 +208,15 @@ select.form-input{cursor:pointer}
 .worker-edit-row:last-child{border-bottom:none}
 .worker-color-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0}
 .worker-rate{font-size:12px;font-family:'DM Mono',monospace;color:var(--muted)}
+
+.flash{
+  animation:flashAnim .3s ease;
+}
+@keyframes flashAnim{
+  0%{opacity:.5;transform:scale(.98)}
+  100%{opacity:1;transform:scale(1)}
+}
+
 </style>
 </head>
 <body>
@@ -583,6 +592,24 @@ function showToast(msg){
   t.classList.add('show');
   clearTimeout(window.__toastTimer);
   window.__toastTimer=setTimeout(()=>t.classList.remove('show'),2200);
+}
+
+function refreshActiveTab(){
+  const active = document.querySelector('.tab.active');
+  if(!active) return;
+
+  active.classList.add('flash');
+  setTimeout(()=>active.classList.remove('flash'),300);
+
+  if(active.id === 'tab-dashboard'){
+    renderDashboard();
+  } else if(active.id === 'tab-history'){
+    renderHistory();
+  } else if(active.id === 'tab-settings'){
+    renderFixedEditList();
+    renderCatGrid();
+    renderWorkersSettings();
+  }
 }
 
 function getMonthData(ym){
@@ -1076,29 +1103,28 @@ window.delFixedPayment=async function(id){
 window.saveFixedPayment=async function(){
   if(window.__saving) return;
   window.__saving = true;
-  try {
-  const amount=toNumber(document.getElementById('mfa-amount').value);
-  const who=document.getElementById('mfa-who').value;
-  if(isNaN(amount)||amount<=0){alert('Montant invalide.'); window.__saving = false; return;}
 
-  setSyncStatus('syncing');
+  try{
+    const amount=toNumber(document.getElementById('mfa-amount').value);
+    const who=document.getElementById('mfa-who').value;
+    if(isNaN(amount)||amount<=0){alert('Montant invalide.');return;}
 
-  if(editingFixedPaymentId){
-    await db.collection('fixedPayments').doc(editingFixedPaymentId).update({amount,who});
-    showToast('Versement modifié');
-  } else {
-    const ref=db.collection('fixedPayments').doc();
-    const id=ref.id;
-    const payment={id,fixedId:addingPaymentForId,amount,who,month:currentMonth,createdAt:Date.now()};
-    await ref.set(payment);
-    showToast('Versement ajouté');
-  }
+    setSyncStatus('syncing');
 
-  resetFixedPaymentForm();
-  closeModal('modal-fixed-add');
-  } catch(err) {
-    console.error(err);
-    alert('Erreur pendant l’enregistrement du versement.');
+    if(editingFixedPaymentId){
+      await db.collection('fixedPayments').doc(editingFixedPaymentId).update({amount,who});
+      showToast('Versement modifié');
+    } else {
+      const ref=db.collection('fixedPayments').doc();
+      const id=ref.id;
+      const payment={id,fixedId:addingPaymentForId,amount,who,month:currentMonth,createdAt:Date.now()};
+      await ref.set(payment);
+      showToast('Versement ajouté');
+    }
+
+    resetFixedPaymentForm();
+    closeModal('modal-fixed-add');
+    refreshActiveTab();
   } finally {
     window.__saving = false;
   }
@@ -1130,38 +1156,35 @@ window.editExpense=function(id){
 window.addExpense=async function(){
   if(window.__saving) return;
   window.__saving = true;
-  try {
-  const label=document.getElementById('f-label').value.trim();
-  const amount=toNumber(document.getElementById('f-amount').value);
-  const who=document.getElementById('f-who').value;
-  const cat=document.getElementById('f-cat').value;
-  const date=document.getElementById('f-date').value||new Date().toISOString().slice(0,10);
 
-  if(!label||isNaN(amount)||amount<=0){
-    alert('Libellé et montant requis.');
-    window.__saving = false;
-    return;
-  }
+  try{
+    const label=document.getElementById('f-label').value.trim();
+    const amount=toNumber(document.getElementById('f-amount').value);
+    const who=document.getElementById('f-who').value;
+    const cat=document.getElementById('f-cat').value;
+    const date=document.getElementById('f-date').value||new Date().toISOString().slice(0,10);
 
-  const month=date.slice(0,7);
-  setSyncStatus('syncing');
+    if(!label||isNaN(amount)||amount<=0){
+      alert('Libellé et montant requis.');
+      return;
+    }
 
-  if(editingExpenseId){
-    await db.collection('expenses').doc(editingExpenseId).update({label,amount,who,cat,date,month});
-    showToast('Dépense modifiée');
-  } else {
-    const ref=db.collection('expenses').doc();
-    const id=ref.id;
-    await ref.set({id,label,amount,who,cat,date,month,createdAt:Date.now()});
-    showToast('Dépense ajoutée');
-  }
+    const month=date.slice(0,7);
+    setSyncStatus('syncing');
 
-  resetExpenseForm();
-  currentMonth=month;
-  switchTab('dashboard', document.getElementById('nav-dashboard'));
-  } catch(err) {
-    console.error(err);
-    alert('Erreur pendant l’enregistrement de la dépense.');
+    if(editingExpenseId){
+      await db.collection('expenses').doc(editingExpenseId).update({label,amount,who,cat,date,month});
+      showToast('Dépense modifiée');
+    } else {
+      const ref=db.collection('expenses').doc();
+      const id=ref.id;
+      await ref.set({id,label,amount,who,cat,date,month,createdAt:Date.now()});
+      showToast('Dépense ajoutée');
+    }
+
+    resetExpenseForm();
+    currentMonth=month;
+    refreshActiveTab();
   } finally {
     window.__saving = false;
   }
@@ -1429,57 +1452,54 @@ window.clearCalendar=function(){
 window.saveCalendarPayment = async function(){
   if(window.__saving) return;
   window.__saving = true;
-  try {
-  const who  = document.getElementById('mfa-who-cal').value;
-  const keys = Object.keys(calPassages);
 
-  if(!keys.length){
-    alert('Sélectionne au moins un jour de passage.');
-    window.__saving = false;
-    return;
-  }
+  try{
+    const who  = document.getElementById('mfa-who-cal').value;
+    const keys = Object.keys(calPassages);
 
-  let grand = 0;
-  Object.values(calPassages).forEach(d=>Object.values(d).forEach(v=>grand+=toNumber(v)));
+    if(!keys.length){
+      alert('Sélectionne au moins un jour de passage.');
+      return;
+    }
 
-  if(grand<=0){
-    alert('Au moins un montant doit être supérieur à 0.');
-    window.__saving = false;
-    return;
-  }
+    let grand = 0;
+    Object.values(calPassages).forEach(d=>Object.values(d).forEach(v=>grand+=toNumber(v)));
 
-  const alreadyExists = fixedPayments.some(p =>
-    p.month===currentMonth &&
-    p.fixedId===addingPaymentForId &&
-    p.passages
-  );
+    if(grand<=0){
+      alert('Au moins un montant doit être supérieur à 0.');
+      return;
+    }
 
-  if(alreadyExists){
-    const confirmReplace = confirm(
-      'Attention : tu vas remplacer tous les passages du mois.\n\nContinuer ?'
+    const alreadyExists = fixedPayments.some(p =>
+      p.month===currentMonth &&
+      p.fixedId===addingPaymentForId &&
+      p.passages
     );
-    if(!confirmReplace){ window.__saving = false; return; }
-  }
 
-  setSyncStatus('syncing');
+    if(alreadyExists){
+      const confirmReplace = confirm(
+        'Attention : tu vas remplacer tous les passages du mois.\n\nContinuer ?'
+      );
+      if(!confirmReplace) return;
+    }
 
-  // Supprime les anciens passages du mois pour cette dépense fixe afin d’éviter les doublons.
-  const old = fixedPayments.filter(p=>p.month===currentMonth&&p.fixedId===addingPaymentForId&&p.passages);
-  for(const op of old) await db.collection('fixedPayments').doc(op.id).delete();
+    setSyncStatus('syncing');
 
-  const ref = db.collection('fixedPayments').doc();
-  const id = ref.id;
-  await ref.set({
-    id, fixedId:addingPaymentForId, amount:grand, who,
-    month:currentMonth, passages:calPassages, createdAt:Date.now()
-  });
+    // Supprime les anciens passages du mois pour cette dépense fixe afin d’éviter les doublons.
+    const old = fixedPayments.filter(p=>p.month===currentMonth&&p.fixedId===addingPaymentForId&&p.passages);
+    for(const op of old) await db.collection('fixedPayments').doc(op.id).delete();
 
-  showToast(`${keys.length} jour${keys.length>1?'s':''} enregistré${keys.length>1?'s':''} — ${fmt(grand)}`);
-  calPassages = {};
-  closeModal('modal-fixed-add');
-  } catch(err) {
-    console.error(err);
-    alert('Erreur pendant l’enregistrement du calendrier.');
+    const ref = db.collection('fixedPayments').doc();
+    const id = ref.id;
+    await ref.set({
+      id, fixedId:addingPaymentForId, amount:grand, who,
+      month:currentMonth, passages:calPassages, createdAt:Date.now()
+    });
+
+    showToast(`${keys.length} jour${keys.length>1?'s':''} enregistré${keys.length>1?'s':''} — ${fmt(grand)}`);
+    calPassages = {};
+    closeModal('modal-fixed-add');
+    refreshActiveTab();
   } finally {
     window.__saving = false;
   }
