@@ -396,7 +396,7 @@ select.form-input{cursor:pointer}
         <div class="form-section" style="margin-bottom:10px">
           <label class="form-label">Personne(s) à ajouter quand tu touches un jour</label>
           <select class="form-input" id="cal-worker-scope" onchange="renderCalendar(addingPaymentForId,true)">
-            <option value="all">Naima + Yollande</option>
+            <option value="all">Toutes les personnes</option>
           </select>
         </div>
         <div class="cal-grid" id="cal-grid"></div>
@@ -1107,7 +1107,7 @@ window.editExpense=function(id){
   const submitBtn = document.querySelector('#tab-add .btn-submit');
   if(submitBtn) submitBtn.textContent = 'Enregistrer les modifications';
 
-  switchTab('add');
+  switchTab('add', document.getElementById('nav-add'));
 };
 
 window.addExpense=async function(){
