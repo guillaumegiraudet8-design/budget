@@ -185,12 +185,15 @@ select.form-input{cursor:pointer}
 .cal-avatar{width:6px;height:6px;border-radius:50%}
 .passages-list{display:flex;flex-direction:column;gap:8px;margin-bottom:4px}
 .passage-day-block{background:var(--surface2);border-radius:var(--radius-sm);overflow:hidden}
-.passage-day-header{display:flex;align-items:center;justify-content:space-between;padding:8px 10px}
+.passage-day-header{display:flex;align-items:center;justify-content:space-between;padding:8px 10px;cursor:pointer}
+.passage-worker-rows{padding:0 10px 8px;display:flex;flex-direction:column;gap:6px}
+.passage-worker-rows.collapsed{display:none}
+.passage-day-chevron{font-size:11px;color:var(--hint);transition:transform .2s;flex-shrink:0}
+.passage-day-chevron.open{transform:rotate(180deg)}
 .passage-day-badge{font-size:12px;font-weight:500;color:var(--blue);background:var(--blue-dim);border-radius:6px;padding:3px 8px;white-space:nowrap}
 .passage-day-total{font-size:12px;font-family:'DM Mono',monospace;color:var(--muted)}
 .passage-day-remove{background:none;border:none;color:var(--hint);font-size:14px;cursor:pointer;padding:0 4px}
 .passage-day-remove:active{color:var(--red)}
-.passage-worker-rows{padding:0 10px 8px;display:flex;flex-direction:column;gap:6px}
 .passage-worker-row{display:flex;align-items:center;gap:8px}
 .worker-toggle{width:22px;height:22px;border-radius:50%;border:1.5px solid var(--border);background:none;cursor:pointer;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:11px;transition:all .15s}
 .worker-toggle.active{border-color:var(--green);background:var(--green-dim)}
@@ -952,6 +955,19 @@ function populateCatSelect(){
     ? `<option disabled>──────── Dépenses fixes ────────</option>` + fixedItems.map(f=>`<option value="fixed_${f.id}">${f.icon||'📌'} ${f.name}</option>`).join('')
     : '';
   sel.innerHTML=baseOptions+fixedOptions;
+
+  // Detect selection of a hasCalendar fixed item → redirect to calendar modal
+  sel.onchange = function(){
+    const val = this.value;
+    if(!val || !val.startsWith('fixed_')) return;
+    const rawId = val.replace('fixed_','');
+    const fi = fixedItems.find(f=>f.id===rawId);
+    if(!fi || !fi.hasCalendar) return;
+    // Reset select to avoid confusion
+    this.selectedIndex = 0;
+    // Open the calendar modal for this fixed item
+    openAddPayment(fi.id);
+  };
 }
 
 window.openAddCat=function(){document.getElementById('modal-cat').classList.remove('hidden');}
@@ -1428,14 +1444,15 @@ function renderPassagesList(fixedId){
     }).join('');
 
     return `<div class="passage-day-block">
-      <div class="passage-day-header">
+      <div class="passage-day-header" onclick="togglePassageBlock(this)">
         <div class="passage-day-badge">${dayLabel}</div>
         <div style="display:flex;align-items:center;gap:8px">
           <div class="passage-day-total">${fmt(dayTotal)}</div>
-          <button class="passage-day-remove" onclick="delete calPassages['${ds}']; renderCalendar('${fixedId}',true)">✕</button>
+          <button class="passage-day-remove" onclick="event.stopPropagation();delete calPassages['${ds}']; renderCalendar('${fixedId}',true)">✕</button>
+          <span class="passage-day-chevron">▼</span>
         </div>
       </div>
-      <div class="passage-worker-rows">${workerRows}</div>
+      <div class="passage-worker-rows collapsed">${workerRows}</div>
     </div>`;
   }).join('');
 
@@ -1505,6 +1522,15 @@ window.saveCalendarPayment = async function(){
   }
 };
 // ─────────────────────────────────────────────────────────
+
+window.togglePassageBlock=function(header){
+  const rows = header.nextElementSibling;
+  const chevron = header.querySelector('.passage-day-chevron');
+  if(!rows) return;
+  const isCollapsed = rows.classList.contains('collapsed');
+  rows.classList.toggle('collapsed', !isCollapsed);
+  if(chevron) chevron.classList.toggle('open', !isCollapsed);
+};
 
 window.closeModal=function(id){
   document.getElementById(id).classList.add('hidden');
