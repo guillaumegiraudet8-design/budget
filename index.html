@@ -8,6 +8,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Budget Famille">
 <title>Budget Famille</title>
+<link rel="apple-touch-icon" href="icon.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
@@ -181,6 +182,12 @@ select.form-input{cursor:pointer}
 .cal-day:active{background:var(--surface)}
 .cal-day.has-entries{background:var(--blue-dim);border-color:var(--blue);color:var(--blue);font-weight:500}
 .cal-day.empty{border-color:transparent;background:none;cursor:default}
+.cal-day.locked{background:rgba(16,185,129,0.25);border-color:var(--green);position:relative}
+.cal-day.locked::after{content:"🔒";position:absolute;bottom:2px;right:4px;font-size:10px}
+.cal-day.locked:active{background:rgba(16,185,129,0.25)}
+.passage-day-block.locked{border:1px solid rgba(16,185,129,0.35)}
+.passage-day-block.locked .passage-day-badge{color:var(--green);background:var(--green-dim)}
+.worker-toggle:disabled,.passage-input:disabled{cursor:not-allowed}
 .cal-day-avatars{display:flex;gap:2px;flex-wrap:wrap;justify-content:center}
 .cal-avatar{width:6px;height:6px;border-radius:50%}
 .passages-list{display:flex;flex-direction:column;gap:8px;margin-bottom:4px}
@@ -1293,6 +1300,44 @@ window.deleteWorker = async function(id){
 // ── CALENDRIER PASSAGES ──────────────────────────────────
 // calPassages = { 'YYYY-MM-DD': { workerId: amount, ... }, ... }
 let calPassages = {};
+let unlockedSavedDays = {};
+let longPressTimer = null;
+window.__justUnlockedDay = null;
+
+function dayKey(fixedId,dateStr){
+  return `${fixedId}|${dateStr}`;
+}
+
+function isSavedPassageDay(fixedId,dateStr){
+  return fixedPayments.some(p =>
+    p.month===currentMonth &&
+    p.fixedId===fixedId &&
+    p.passages &&
+    p.passages[dateStr]
+  );
+}
+
+function isDayUnlocked(fixedId,dateStr){
+  return !!unlockedSavedDays[dayKey(fixedId,dateStr)];
+}
+
+window.unlockSavedDay = function(dateStr,fixedId){
+  if(!isSavedPassageDay(fixedId,dateStr)) return;
+  const key = dayKey(fixedId,dateStr);
+  if(!confirm('Modifier ce jour déjà enregistré ?')) return;
+  unlockedSavedDays[key] = true;
+  window.__justUnlockedDay = key;
+  showToast('🔓 Jour déverrouillé');
+  renderCalendar(fixedId,true);
+};
+
+function startLongPress(dateStr,fixedId){
+  clearTimeout(longPressTimer);
+  longPressTimer = setTimeout(()=>unlockSavedDay(dateStr,fixedId),650);
+}
+function cancelLongPress(){
+  clearTimeout(longPressTimer);
+}
 
 function selectedCalendarWorkers(){
   const sel = document.getElementById('cal-worker-scope');
@@ -1338,6 +1383,8 @@ function renderCalendar(fixedId, preserveState=false){
     const ds = `${currentMonth}-${String(d).padStart(2,'0')}`;
     const dayData = calPassages[ds];
     const hasEntries = dayData && Object.keys(dayData).length > 0;
+    const saved = isSavedPassageDay(fixedId,ds);
+    const locked = saved && !isDayUnlocked(fixedId,ds);
     let avatars = '';
     if(hasEntries){
       avatars = `<div class="cal-day-avatars">${
@@ -1347,13 +1394,27 @@ function renderCalendar(fixedId, preserveState=false){
         }).join('')
       }</div>`;
     }
-    html += `<div class="cal-day${hasEntries?' has-entries':''}" onclick="toggleCalDay('${ds}','${fixedId}')">${d}${avatars}</div>`;
+    html += `<div class="cal-day${hasEntries?' has-entries':''}${locked?' locked':''}"
+      onclick="toggleCalDay('${ds}','${fixedId}')"
+      oncontextmenu="event.preventDefault(); unlockSavedDay('${ds}','${fixedId}')"
+      ontouchstart="startLongPress('${ds}','${fixedId}')"
+      ontouchend="cancelLongPress()"
+      ontouchmove="cancelLongPress()">${d}${avatars}</div>`;
   }
   document.getElementById('cal-grid').innerHTML = html;
   renderPassagesList(fixedId);
 }
 
 window.toggleCalDay = function(dateStr, fixedId){
+  const key = dayKey(fixedId,dateStr);
+  if(window.__justUnlockedDay === key){
+    window.__justUnlockedDay = null;
+    return;
+  }
+  if(isSavedPassageDay(fixedId,dateStr) && !isDayUnlocked(fixedId,dateStr)){
+    showToast('🔒 Jour verrouillé — appui long ou clic droit pour modifier');
+    return;
+  }
   const selected = selectedCalendarWorkers();
   if(!selected.length){showToast('⚠️ Ajoute au moins une personne dans Réglages.');return;}
 
@@ -1374,6 +1435,10 @@ window.toggleCalDay = function(dateStr, fixedId){
 };
 
 window.toggleWorkerOnDay = function(dateStr, workerId, fixedId){
+  if(isSavedPassageDay(fixedId,dateStr) && !isDayUnlocked(fixedId,dateStr)){
+    showToast('🔒 Jour verrouillé — appui long ou clic droit pour modifier');
+    return;
+  }
   if(!calPassages[dateStr]) calPassages[dateStr] = {};
   if(calPassages[dateStr][workerId] !== undefined){
     delete calPassages[dateStr][workerId];
@@ -1385,7 +1450,12 @@ window.toggleWorkerOnDay = function(dateStr, workerId, fixedId){
   renderCalendar(fixedId,true);
 };
 
-window.updateWorkerAmount = function(dateStr, workerId, val){
+window.updateWorkerAmount = function(dateStr, workerId, val, fixedId){
+  if(fixedId && isSavedPassageDay(fixedId,dateStr) && !isDayUnlocked(fixedId,dateStr)){
+    showToast('🔒 Jour verrouillé — appui long ou clic droit pour modifier');
+    renderCalendar(fixedId,true);
+    return;
+  }
   if(calPassages[dateStr]) calPassages[dateStr][workerId] = toNumber(val);
   updateCalTotal();
 };
@@ -1426,6 +1496,8 @@ function renderPassagesList(fixedId){
     const dayData = calPassages[ds]||{};
     const dayTotal = Object.values(dayData).reduce((s,v)=>s+toNumber(v),0);
     const dayLabel = new Date(ds+'T12:00:00').toLocaleDateString('fr-FR',{weekday:'long',day:'numeric'});
+    const saved = isSavedPassageDay(fixedId,ds);
+    const locked = saved && !isDayUnlocked(fixedId,ds);
 
     const workerRows = workers.map(w=>{
       const active = dayData[w.id] !== undefined;
@@ -1434,24 +1506,29 @@ function renderPassagesList(fixedId){
         <button class="worker-toggle${active?' active':''}"
           onclick="toggleWorkerOnDay('${ds}','${w.id}','${fixedId}')"
           style="${active?'border-color:'+w.color+';background:'+w.color+'22':''}"
-          title="${active?'Retirer':'Ajouter'} ${w.name}">
+          title="${locked?'Jour verrouillé':(active?'Retirer':'Ajouter')+' '+w.name}"
+          ${locked?'disabled':''}>
           ${active?'✓':''}
         </button>
         <div class="worker-name-lbl" style="color:${active?w.color:'var(--hint)'}">${w.name}</div>
         <input class="passage-input" type="number" inputmode="decimal"
           value="${active?amount:''}"
           placeholder="${w.rate}"
-          ${active?'':'disabled'}
-          onchange="updateWorkerAmount('${ds}','${w.id}',this.value)">
+          ${(!active||locked)?'disabled':''}
+          onchange="updateWorkerAmount('${ds}','${w.id}',this.value,'${fixedId}')">
       </div>`;
     }).join('');
 
-    return `<div class="passage-day-block">
-      <div class="passage-day-header" onclick="togglePassageBlock(this)">
-        <div class="passage-day-badge">${dayLabel}</div>
+    return `<div class="passage-day-block${locked?' locked':''}">
+      <div class="passage-day-header" onclick="togglePassageBlock(this)"
+        oncontextmenu="event.preventDefault(); unlockSavedDay('${ds}','${fixedId}')"
+        ontouchstart="startLongPress('${ds}','${fixedId}')"
+        ontouchend="cancelLongPress()"
+        ontouchmove="cancelLongPress()">
+        <div class="passage-day-badge">${locked?'🔒 ':''}${dayLabel}</div>
         <div style="display:flex;align-items:center;gap:8px">
           <div class="passage-day-total">${fmt(dayTotal)}</div>
-          <button class="passage-day-remove" onclick="event.stopPropagation();delete calPassages['${ds}']; renderCalendar('${fixedId}',true)">✕</button>
+          <button class="passage-day-remove" onclick="event.stopPropagation();removeCalDay('${ds}','${fixedId}')">✕</button>
           <span class="passage-day-chevron">▼</span>
         </div>
       </div>
@@ -1462,7 +1539,21 @@ function renderPassagesList(fixedId){
   updateCalTotal();
 }
 
+window.removeCalDay=function(dateStr,fixedId){
+  if(isSavedPassageDay(fixedId,dateStr) && !isDayUnlocked(fixedId,dateStr)){
+    showToast('🔒 Jour verrouillé — appui long ou clic droit pour modifier');
+    return;
+  }
+  delete calPassages[dateStr];
+  renderCalendar(fixedId,true);
+};
+
 window.clearCalendar=function(){
+  const savedLocked = Object.keys(calPassages).some(ds => isSavedPassageDay(addingPaymentForId,ds) && !isDayUnlocked(addingPaymentForId,ds));
+  if(savedLocked){
+    showToast('🔒 Certains jours sont verrouillés');
+    return;
+  }
   if(!confirm('Supprimer tous les passages du mois ?')) return;
   calPassages = {};
   renderCalendar(addingPaymentForId,true);
@@ -1518,6 +1609,7 @@ window.saveCalendarPayment = async function(){
       month:currentMonth, passages:calPassages, createdAt:Date.now()
     });
 
+    Object.keys(unlockedSavedDays).forEach(k=>{ if(k.startsWith(addingPaymentForId+'|')) delete unlockedSavedDays[k]; });
     showToast(`✅ ${keys.length} jour${keys.length>1?'s':''} · ${fmt(grand)}`);
     calPassages = {};
     closeModal('modal-fixed-add');
