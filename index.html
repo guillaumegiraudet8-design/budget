@@ -929,12 +929,12 @@ window.saveSettings=async function(){
   const b=toNumber(document.getElementById('set-budget').value);
   const g=toNumber(document.getElementById('set-g').value);
   const m=toNumber(document.getElementById('set-m').value);
-  if(!b||!g||!m){alert('Remplis tous les champs.');return;}
+  if(!b||!g||!m){showToast('⚠️ Remplis tous les champs.');return;}
   settings={budget:b,gContrib:g,mContrib:m};
   setSyncStatus('syncing');
   await db.collection('config').doc('settings').set(settings);
   renderDashboard();
-  showToast('Réglages enregistrés');
+  showToast(`✅ Budget ${fmt(b)} · G ${fmt(g)} · M ${fmt(m)}`);
 };
 
 function renderCatGrid(){
@@ -975,7 +975,7 @@ window.saveCat=async function(){
   const icon=document.getElementById('mc-icon').value.trim()||'📦';
   const name=document.getElementById('mc-name').value.trim();
   const color=document.getElementById('mc-color').value;
-  if(!name){alert('Donne un nom à la catégorie.');return;}
+  if(!name){showToast('⚠️ Donne un nom à la catégorie.');return;}
   const id=makeLocalId('cat');
   const newCat={id,icon,name,color};
   categories.push(newCat);
@@ -1034,7 +1034,7 @@ window.saveFixed=async function(){
   const name=document.getElementById('mf-name').value.trim();
   const budget=toNumber(document.getElementById('mf-budget').value);
   const hasCalendar=document.getElementById('mf-calendar').checked;
-  if(!name||isNaN(budget)){alert('Remplis tous les champs.');return;}
+  if(!name||isNaN(budget)){showToast('⚠️ Remplis tous les champs.');return;}
   if(editingFixedId){
     fixedItems=fixedItems.map(f=>f.id===editingFixedId?{...f,icon,name,budget,hasCalendar}:f);
   } else {
@@ -1123,19 +1123,19 @@ window.saveFixedPayment=async function(){
   try{
     const amount=toNumber(document.getElementById('mfa-amount').value);
     const who=document.getElementById('mfa-who').value;
-    if(isNaN(amount)||amount<=0){alert('Montant invalide.');return;}
+    if(isNaN(amount)||amount<=0){showToast('⚠️ Montant invalide.');return;}
 
     setSyncStatus('syncing');
 
     if(editingFixedPaymentId){
       await db.collection('fixedPayments').doc(editingFixedPaymentId).update({amount,who});
-      showToast('Versement modifié');
+      showToast(`Versement modifié • ${fmt(amount)}`);
     } else {
       const ref=db.collection('fixedPayments').doc();
       const id=ref.id;
       const payment={id,fixedId:addingPaymentForId,amount,who,month:currentMonth,createdAt:Date.now()};
       await ref.set(payment);
-      showToast('Versement ajouté');
+      showToast(`Versement ajouté • ${fmt(amount)}`);
     }
 
     resetFixedPaymentForm();
@@ -1172,6 +1172,8 @@ window.editExpense=function(id){
 window.addExpense=async function(){
   if(window.__saving) return;
   window.__saving = true;
+  const btn=document.querySelector('#tab-add .btn-submit');
+  if(btn){btn.disabled=true;btn.style.opacity='0.6';}
 
   try{
     const label=document.getElementById('f-label').value.trim();
@@ -1181,7 +1183,7 @@ window.addExpense=async function(){
     const date=document.getElementById('f-date').value||new Date().toISOString().slice(0,10);
 
     if(!label||isNaN(amount)||amount<=0){
-      alert('Libellé et montant requis.');
+      showToast('⚠️ Libellé et montant requis.');
       return;
     }
 
@@ -1190,12 +1192,12 @@ window.addExpense=async function(){
 
     if(editingExpenseId){
       await db.collection('expenses').doc(editingExpenseId).update({label,amount,who,cat,date,month});
-      showToast('Dépense modifiée');
+      showToast(`Dépense modifiée • ${fmt(amount)}`);
     } else {
       const ref=db.collection('expenses').doc();
       const id=ref.id;
       await ref.set({id,label,amount,who,cat,date,month,createdAt:Date.now()});
-      showToast('Dépense ajoutée');
+      showToast(`Dépense ajoutée • ${fmt(amount)}`);
     }
 
     resetExpenseForm();
@@ -1203,6 +1205,7 @@ window.addExpense=async function(){
     refreshActiveTab();
   } finally {
     window.__saving = false;
+    if(btn){btn.disabled=false;btn.style.opacity='1';}
   }
 };
 
@@ -1266,7 +1269,7 @@ window.saveWorker = async function(){
   const name  = document.getElementById('mw-name').value.trim();
   const rate  = toNumber(document.getElementById('mw-rate').value);
   const color = document.getElementById('mw-color').value;
-  if(!name || isNaN(rate)){alert('Remplis le prénom et le tarif.');return;}
+  if(!name || isNaN(rate)){showToast('⚠️ Remplis le prénom et le tarif.');return;}
   if(editingWorkerId){
     workers = workers.map(w=>w.id===editingWorkerId ? {...w,name,rate,color} : w);
   } else {
@@ -1352,7 +1355,7 @@ function renderCalendar(fixedId, preserveState=false){
 
 window.toggleCalDay = function(dateStr, fixedId){
   const selected = selectedCalendarWorkers();
-  if(!selected.length){alert('Ajoute au moins une personne dans Réglages.');return;}
+  if(!selected.length){showToast('⚠️ Ajoute au moins une personne dans Réglages.');return;}
 
   if(!calPassages[dateStr]) calPassages[dateStr] = {};
 
@@ -1469,13 +1472,15 @@ window.clearCalendar=function(){
 window.saveCalendarPayment = async function(){
   if(window.__saving) return;
   window.__saving = true;
+  const calBtn=document.querySelector('#cal-section .btn-submit');
+  if(calBtn){calBtn.disabled=true;calBtn.style.opacity='0.6';}
 
   try{
     const who  = document.getElementById('mfa-who-cal').value;
     const keys = Object.keys(calPassages);
 
     if(!keys.length){
-      alert('Sélectionne au moins un jour de passage.');
+      showToast('⚠️ Sélectionne au moins un jour de passage.');
       return;
     }
 
@@ -1483,7 +1488,7 @@ window.saveCalendarPayment = async function(){
     Object.values(calPassages).forEach(d=>Object.values(d).forEach(v=>grand+=toNumber(v)));
 
     if(grand<=0){
-      alert('Au moins un montant doit être supérieur à 0.');
+      showToast('⚠️ Au moins un montant doit être supérieur à 0.');
       return;
     }
 
@@ -1513,12 +1518,14 @@ window.saveCalendarPayment = async function(){
       month:currentMonth, passages:calPassages, createdAt:Date.now()
     });
 
-    showToast(`${keys.length} jour${keys.length>1?'s':''} enregistré${keys.length>1?'s':''} — ${fmt(grand)}`);
+    showToast(`✅ ${keys.length} jour${keys.length>1?'s':''} · ${fmt(grand)}`);
     calPassages = {};
     closeModal('modal-fixed-add');
     refreshActiveTab();
   } finally {
     window.__saving = false;
+    const calBtn2=document.querySelector('#cal-section .btn-submit');
+    if(calBtn2){calBtn2.disabled=false;calBtn2.style.opacity='1';}
   }
 };
 // ─────────────────────────────────────────────────────────
